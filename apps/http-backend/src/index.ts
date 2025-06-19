@@ -2,6 +2,7 @@ import express from 'express'
 import z from 'zod'
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
+import { authMiddleware } from './middleware';
 const app = express();
 const PORT = process.env.PORT || 8000
 app.use(express.json());
