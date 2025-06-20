@@ -22,6 +22,8 @@
   "description": "",
   "devDependencies": {
     "@types/bcrypt": "^5.0.2",
-    "@types/jsonwebtoken": "^9.0.10"
+    "@types/jsonwebtoken": "^9.0.10",
+    "@repo/backend-common": "workspace:*",
+    "@repo/common": "workspace:*"
   }
 }

@@ -1,5 +1,5 @@
 import express from 'express'
-import z from 'zod'
+import { CreateRoomSchema, CreateUserSchema, SigninSchema } from "@repo/common/types"
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import { authMiddleware } from './middleware';
@@ -8,11 +8,7 @@ const PORT = process.env.PORT || 8000
 app.use(express.json());
 
 app.post("/api/v1/signup",async (req,res)=>{
-    const requiredBody = z.object({
-        userName: z.string().email().min(3),
-        password: z.string().min(6).max(15)
-    })
-    const parsedData = requiredBody.safeParse(req.body);
+    const parsedData = CreateUserSchema.safeParse(req.body);
     if (!parsedData.success) {
         res.status(401).send("Invalid Input Format")
         return
@@ -28,12 +24,16 @@ app.post("/api/v1/signup",async (req,res)=>{
     })
 })
 app.post("/api/v1/signin",async (req,res)=>{
-    const {userName,password} = req.body;
+   const parsedData = SigninSchema.safeParse(req.body);
+    if (!parsedData.success) {
+        res.status(401).send("Invalid Input Format")
+        return
+    }
 
     //db call
     const user= {password: ""};
     //generate token
-    const isValid = await bcrypt.compare(password,user?.password)
+    const isValid = await bcrypt.compare(parsedData.data.password,user?.password)
     if (!isValid) {
         res.status(404).send("Wrong password")
         return
@@ -45,6 +45,11 @@ app.post("/api/v1/signin",async (req,res)=>{
     })
 })
 app.post("/api/v1/room/:roomId",authMiddleware,async (req,res)=>{
+    const parsedData = CreateRoomSchema.safeParse(req.body);
+    if (!parsedData.success) {
+        res.status(401).send("Invalid Input Format")
+        return
+    }
     //@ts-ignore
     const userId = req.userId;
     // const roomId = req.params()
