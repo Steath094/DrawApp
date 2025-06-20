@@ -3,6 +3,7 @@ import { CreateRoomSchema, CreateUserSchema, SigninSchema } from "@repo/common/t
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import { authMiddleware } from './middleware';
+import prisma from "@repo/db/client";
 const app = express();
 const PORT = process.env.PORT || 8000
 app.use(express.json());
@@ -15,6 +16,12 @@ app.post("/api/v1/signup",async (req,res)=>{
     }
     const hashedPassword = await bcrypt.hash(parsedData.data.password,10);
     //db call
+    const user = await prisma.user.create({
+        data:{
+            userNmae: parsedData.data.userName,
+            password: parsedData.data.userName
+        }
+    })
 
     //generate token
     // const token = jwt.sign({id:user.id},process.env.JWT_SECRET as string)
