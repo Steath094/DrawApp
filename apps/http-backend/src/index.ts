@@ -3,7 +3,7 @@ import { CreateRoomSchema, CreateUserSchema, SigninSchema } from "@repo/common/t
 import jwt from 'jsonwebtoken'
 import bcrypt from 'bcrypt'
 import { authMiddleware } from './middleware';
-import prisma from "@repo/db/client";
+import {prismaClient} from "@repo/db/client";
 const app = express();
 const PORT = process.env.PORT || 8000
 app.use(express.json());
@@ -16,17 +16,22 @@ app.post("/api/v1/signup",async (req,res)=>{
     }
     const hashedPassword = await bcrypt.hash(parsedData.data.password,10);
     //db call
-    const user = await prisma.user.create({
+    const user = await prismaClient.user.create({
         data:{
-            userNmae: parsedData.data.userName,
-            password: parsedData.data.userName
+            email: parsedData.data.email,
+            password: hashedPassword,
+            name: parsedData.data.name,
+            avatarUrl: parsedData.data.avatarUrl
         }
     })
-
+    if (!user) {
+        res.status(500).json("Error While Creating User")
+        return
+    }
     //generate token
-    // const token = jwt.sign({id:user.id},process.env.JWT_SECRET as string)
+    const token = jwt.sign({id:user.id},process.env.JWT_SECRET as string)
     res.status(200).json({
-        token: "",
+        token: token,
         message: "User Successfully Created"
     })
 })
@@ -38,32 +43,46 @@ app.post("/api/v1/signin",async (req,res)=>{
     }
 
     //db call
-    const user= {password: ""};
+    const user= await prismaClient.user.findFirst({
+        where:{
+            email: parsedData.data.email
+        }
+    })
+    if (!user) {
+         res.status(403).send("No User With such email Exists")
+        return
+    }
     //generate token
-    const isValid = await bcrypt.compare(parsedData.data.password,user?.password)
+    const isValid = await bcrypt.compare(parsedData.data.password,user?.password as string)
     if (!isValid) {
         res.status(404).send("Wrong password")
         return
     }
-    // const token = jwt.sign({id:user.id},process.env.JWT_SECRET as string)
+    const token = jwt.sign({id:user.id},process.env.JWT_SECRET as string)
     res.status(200).json({
-        token: "",
+        token: token,
         message: "User Loggedin Successfulyy"
     })
 })
-app.post("/api/v1/room/:roomId",authMiddleware,async (req,res)=>{
+app.post("/api/v1/room",authMiddleware,async (req,res)=>{
     const parsedData = CreateRoomSchema.safeParse(req.body);
     if (!parsedData.success) {
         res.status(401).send("Invalid Input Format")
         return
     }
-    //@ts-ignore
     const userId = req.userId;
-    // const roomId = req.params()
+    if (!userId) {
+        res.status(404).json("unauthorizedRequest")
+    }
     //db call
-
+    const room = await prismaClient.room.create({
+        data:{
+            slug: parsedData.data.name,
+            adminId: userId as string
+        }
+    })
     res.status(200).json({
-        roomId: "",
+        roomId: room.id,
         message: "Room Successfully Created"
     })
 })
