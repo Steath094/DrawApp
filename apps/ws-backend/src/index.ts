@@ -1,19 +1,30 @@
-import { WebSocketServer } from 'ws';
+import { WebSocket, WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
 import {JWT_SECRET} from '@repo/backend-common/config'
+import {prismaClient} from "@repo/db/client";
 const wss = new WebSocketServer({ port: 8080 });
 
 function checkUser(token:string): string | null {
-    const decoded = jwt.verify(token,JWT_SECRET as string);
-    if (typeof decoded ==='string') {
-      return null
-    }
-    if (!decoded || !decoded.id) {
+    try {
+      const decoded = jwt.verify(token,JWT_SECRET as string);
+      if (typeof decoded ==='string') {
         return null
+      }
+      if (!decoded || !decoded.id) {
+          return null
+      }
+  
+      return decoded.id;
+    } catch (error) {
+      return null;
     }
-
-    return decoded.id;
 }
+interface User {
+  ws: WebSocket
+  rooms: Set<string>;
+}
+const users = new Map<string, User>();
+const rooms = new Map<string, Set<string>>();
 wss.on('connection', function connection(ws,req) {
   const url = req.url;
   if (!url) {
@@ -21,30 +32,61 @@ wss.on('connection', function connection(ws,req) {
   }
   const queryParams = new URLSearchParams(url.split('?')[1])
   const token = queryParams.get('token') || "";
-  const userAuthenticated = checkUser(token)
-  if (!userAuthenticated) {
+  const userId = checkUser(token)
+  if (userId===null) {
     ws.close();
     return
   }
-  ws.on('message', function message(data) {
+  users.set(userId,{
+    rooms: new Set<string>,
+    ws
+  })
+  ws.on('message',async function message(data) {
     if (typeof data !=='string') {
       return
     }
       const parsedData = JSON.parse(data);
-
+      const roomId = parsedData.roomId;
       if (parsedData.type == "join_room") {
         //store in local state
-        
+        const user = users.get(userId);
+        if (!rooms.has(roomId)) {
+          rooms.set(roomId,new Set<string>);
+        }
+        rooms.get(roomId)?.add(userId);
+        user?.rooms.add(roomId)
       }
       if (parsedData.type == "leave_room") {
         //update in local state
-
+        const user = users.get(userId);
+        if (!user) {
+          return
+        }
+        user.rooms.delete(roomId);
+        rooms.get(roomId)?.delete(userId);
+        if (rooms.get(roomId)?.size==0) {
+          rooms.delete(roomId)
+        }
       }
 
       if (parsedData.type == "chat") {
         //update in local state
-          const room = parsedData.roomId;
+          const roomId = parsedData.roomId;
           const message = parsedData.message;
+          await prismaClient.chat.create({
+            data:{
+              roomId,
+              message,
+              userId
+            }
+          })
+          rooms.get(roomId)?.forEach(id=>{
+            users.get(id)?.ws.send(JSON.stringify({
+              type: "chat",
+              message: message,
+              roomId
+            }))
+          })
       }
       ws.send('pong');
   });
