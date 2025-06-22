@@ -4,6 +4,7 @@
   "exports":{
     "./client": "./src/index.ts"
   },
+  "type": "module",
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",
     "prisma": "^6.10.1"
