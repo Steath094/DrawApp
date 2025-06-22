@@ -86,8 +86,35 @@ app.post("/api/v1/room",authMiddleware,async (req,res)=>{
         message: "Room Successfully Created"
     })
 })
-
+app.get('/api/v1/chat/:roomId',async (req,res)=>{
+    const roomId = Number(req.params.roomId) 
+    try {
+        const messages = await prismaClient.chat.findMany({
+            where:{
+                roomId
+            },
+            take: 50
+        })
+        res.status(200).json(messages)
+    } catch (error) {
+        console.log(error);
+        res.status(404).json({messages: []})
+    }
+})
+app.get('/api/v1/room/:slug',async (req,res)=>{
+    const slug = req.params.slug;
+    try {
+        const room = await prismaClient.room.findFirst({
+            where:{
+                slug
+            }
+        })
+        res.status(200).json(room)
+    } catch (error) {
+        console.log(error);
+        res.status(404).json({room: "Room Not Found"})
+    }
+})
 app.listen(PORT,()=>{
     console.log("HTTP Backend Is running on Port:",PORT);
-    
 })
