@@ -5,10 +5,11 @@ import bcrypt from 'bcrypt'
 import { authMiddleware } from './middleware';
 import {prismaClient} from "@repo/db/client";
 import { JWT_SECRET } from '@repo/backend-common/config';
+import cors from "cors";
 const app = express();
 const PORT = process.env.PORT || 8000
+app.use(cors())
 app.use(express.json());
-
 app.post("/api/v1/signup",async (req,res)=>{
     const parsedData = CreateUserSchema.safeParse(req.body);
     if (!parsedData.success) {
@@ -99,7 +100,7 @@ app.get('/api/v1/chat/:roomId',async (req,res)=>{
             },
             take: 50
         })
-        res.status(200).json(messages)
+        res.status(200).json({messages})
     } catch (error) {
         console.log(error);
         res.status(404).json({messages: []})
