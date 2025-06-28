@@ -21,11 +21,8 @@ function checkUser(token:string): string | null {
       return null;
     }
 }
-interface User {
-  ws: WebSocket
-  rooms: Set<number>;
-}
-const users = new Map<string, User>();
+const users = new Map<string,Set<number>>();
+const userSockets = new Map<string, Set<WebSocket>>();
 const rooms = new Map<number, Set<string>>();
 wss.on('connection', function connection(ws,req) {
   const url = req.url;
@@ -40,10 +37,12 @@ wss.on('connection', function connection(ws,req) {
     ws.close();
     return
   }
-  users.set(userId,{
-    rooms: new Set<number>,
-    ws
-  })
+  users.set(userId,new Set<number>)
+  if (!userSockets.has(userId)) {
+    userSockets.set(userId,new Set<WebSocket>)
+  }
+  userSockets.get(userId)?.add(ws);
+
   ws.on('message',async function message(data) {
     console.log("users: ",users);
     console.log("rooms: ", rooms);
@@ -59,7 +58,7 @@ wss.on('connection', function connection(ws,req) {
           rooms.set(roomId,new Set<string>);
         }
         rooms.get(roomId)?.add(userId);
-        user?.rooms.add(roomId)
+        user?.add(roomId)
       }
       if (parsedData.type == "leave_room") {
         //update in local state
@@ -67,7 +66,7 @@ wss.on('connection', function connection(ws,req) {
         if (!user) {
           return
         }
-        user.rooms.delete(roomId);
+        user.delete(roomId);
         rooms.get(roomId)?.delete(userId);
         if (rooms.get(roomId)?.size==0) {
           rooms.delete(roomId)
@@ -87,13 +86,20 @@ wss.on('connection', function connection(ws,req) {
           })
           
           rooms.get(roomId)?.forEach(id=>{
-            users.get(id)?.ws.send(JSON.stringify({
-              type: "chat",
-              message: message,
-              roomId
-            }))
+            userSockets.get(id)?.forEach(ws => {
+              ws.send(JSON.stringify({
+                type: "chat",
+                message: message,
+                roomId
+              }))
+            });
           })
       }
   });
-
+  ws.on('close', () => {
+    userSockets.get(userId)?.delete(ws);
+    if (userSockets.get(userId)?.size==0) {
+      userSockets.delete(userId);
+    }
+});
 });

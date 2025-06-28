@@ -12,8 +12,11 @@ export default function Canvas({roomId,socket}: {roomId:number,socket:WebSocket}
         }
     }, [canvasRef]);
   return (
-    <div>
-        <canvas ref={canvasRef} className='border-2 border-black' height={700} width={1520} ></canvas>
+    <div style={{
+      height: "100vh",
+      overflow: "hidden"
+    }}>
+        <canvas ref={canvasRef} className='border-2 border-black' height={window.innerHeight} width={window.innerWidth} ></canvas>
     </div>
   )
 }
