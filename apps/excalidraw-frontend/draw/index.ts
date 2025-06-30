@@ -73,6 +73,14 @@ export async function initDraw(canvas: HTMLCanvasElement,roomId:number,socket: W
                 centerX: startX+ radius,
                 centerY: startY+radius
             }
+        }else if (selectedTool=="pencil"){
+            shape = {
+                type: 'pencil',
+                startX,
+                startY,
+                endX: e.clientX,
+                endY: e.clientY
+            }
         }
         if(!shape) return
         existingShape.push(shape)
@@ -101,6 +109,11 @@ export async function initDraw(canvas: HTMLCanvasElement,roomId:number,socket: W
                 ctx.arc(centerX,centerY,radius,0,Math.PI*2);
                 ctx.stroke();
                 ctx.closePath();
+            } else if(selectedTool==="pencil"){
+                ctx.beginPath();
+                ctx.moveTo(startX,startY); 
+                ctx.lineTo(e.clientX, e.clientY); 
+                ctx.stroke(); 
             }
         }
     })
@@ -112,18 +125,22 @@ function clearCanvas(existingShape:Shape[],canvas:HTMLCanvasElement,ctx:CanvasRe
     ctx.fillRect(0,0,canvas.width,canvas.height)
 
     existingShape.map(shape=>{
-        console.log('shape',shape);
         if (shape.type=='rect') {
-            console.log(true);
             ctx.strokeStyle= 'rgba(255,255,255)'
             ctx.strokeRect(shape.x,shape.y,shape.width,shape.height)
-        }else if(shape.type=='circle'){
+        }else if(shape.type=="circle"){
             ctx.beginPath();
             ctx.arc(shape.centerX,shape.centerY,shape.radius,0,Math.PI*2);
             ctx.stroke();
             ctx.closePath();
+        }else if(shape.type=="pencil"){
+            ctx.beginPath();
+            ctx.moveTo(shape.startX,shape.startY); 
+            ctx.lineTo(shape.endX,shape.endY); 
+            ctx.stroke(); 
+            }
         }
-    })
+    )
 }
 
 
