@@ -160,7 +160,7 @@ export class Game {
             }else if (selectedTool==="rhomb") {
                 const radius = calculateRoundedCornerRadius(Math.min(width,height));
                 this.ctx.beginPath();
-                // this.ctx.moveTo(this.startX+width/2+radius,this.startY)
+                this.ctx.moveTo(this.startX+width/2+radius,this.startY)
                 const x1 = this.startX + width
                 const y1 = this.startY + height / 2
 
@@ -174,12 +174,12 @@ export class Game {
 
 
                 //curved rhombus
+                this.ctx.moveTo(this.startX+width/2-radius,this.startY)
                 this.ctx.arcTo(this.startX+width/2,this.startY,x1,y1,radius)
                 this.ctx.arcTo(x1,y1,this.startX+width/2,this.startY+height,radius)
                 this.ctx.arcTo(this.startX+width/2,this.startY+height,this.startX, this.startY+height/2,radius)
-                this.ctx.arcTo(this.startX, this.startY+height/2,this.startX+width/2,this.startY,radius)
-                this.ctx.arcTo(this.startX+width/2,this.startY,this.startX+width/2+radius,this.startY,radius)
-
+                this.ctx.arcTo(this.startX, this.startY+height/2,this.startX+width/2-radius,this.startY-radius,radius)
+                this.ctx.closePath();
                 this.ctx.stroke();
             }
         }
