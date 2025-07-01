@@ -19,6 +19,12 @@ type Shape = {
     startY: number,
     endX: number,
     endY: number
+} | {
+    type: "rhomb",
+    x: number,
+    y: number,
+    width: number,
+    height: number
 }
 
 export class Game {
@@ -151,6 +157,30 @@ export class Game {
                 this.ctx.lineTo(e.clientX, e.clientY); 
                 this.ctx.stroke(); 
                 this.ctx.closePath();
+            }else if (selectedTool==="rhomb") {
+                const radius = calculateRoundedCornerRadius(Math.min(width,height));
+                this.ctx.beginPath();
+                // this.ctx.moveTo(this.startX+width/2+radius,this.startY)
+                const x1 = this.startX + width
+                const y1 = this.startY + height / 2
+
+                //plain rhombus
+                // this.ctx.moveTo(this.startX+width/2,this.startY)
+                // this.ctx.lineTo(x1, y1)
+                // this.ctx.moveTo(x1, y1)
+                // this.ctx.lineTo(this.startX+width/2,this.startY+height);
+                // this.ctx.lineTo(this.startX, this.startY+height/2);
+                // this.ctx.lineTo(this.startX+width/2,this.startY)
+
+
+                //curved rhombus
+                this.ctx.arcTo(this.startX+width/2,this.startY,x1,y1,radius)
+                this.ctx.arcTo(x1,y1,this.startX+width/2,this.startY+height,radius)
+                this.ctx.arcTo(this.startX+width/2,this.startY+height,this.startX, this.startY+height/2,radius)
+                this.ctx.arcTo(this.startX, this.startY+height/2,this.startX+width/2,this.startY,radius)
+                this.ctx.arcTo(this.startX+width/2,this.startY,this.startX+width/2+radius,this.startY,radius)
+
+                this.ctx.stroke();
             }
         }
     }
