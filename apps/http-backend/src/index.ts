@@ -98,7 +98,7 @@ app.get('/api/v1/chat/:roomId',async (req,res)=>{
             where:{
                 roomId
             },
-            take: 50
+            // take: 50
         })
         res.status(200).json({messages})
     } catch (error) {

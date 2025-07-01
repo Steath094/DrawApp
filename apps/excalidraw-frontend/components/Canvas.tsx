@@ -4,8 +4,9 @@ import { useEffect } from "react";
 import { useRef } from "react";
 import IconButton from "./IconButton";
 import { Circle, PencilIcon, RectangleHorizontal } from "lucide-react";
+import { Game } from "@/draw/Game";
 
-type tools = "circle" | "rect" | "pencil";
+export type Tool = "circle" | "rect" | "pencil";
 export default function Canvas({
   roomId,
   socket,
@@ -14,16 +15,22 @@ export default function Canvas({
   socket: WebSocket;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [selectedTool, setSelectedTool] = useState<tools>("rect");
+  const [game,setGame] = useState<Game>()
+  const [selectedTool, setSelectedTool] = useState<Tool>("rect");
 
   useEffect(() => {
     //@ts-ignore
-    window.selectedTool = selectedTool;
-  }, [selectedTool]);
+    game?.setTool(selectedTool);
+    console.log(selectedTool);
+    
+  }, [selectedTool,game]);
   useEffect(() => {
     if (canvasRef.current) {
-      const canvas = canvasRef.current;
-      initDraw(canvas, roomId, socket);
+      const g = new Game(canvasRef.current,roomId,socket)
+      setGame(g);
+      return () =>{
+        g.destroy();
+      }
     }
   }, [canvasRef]);
   return (
@@ -48,8 +55,8 @@ export function ToolBar({
   selectedTool,
   setSelectedTool,
 }: {
-  selectedTool: tools;
-  setSelectedTool: (s: tools) => void;
+  selectedTool: Tool;
+  setSelectedTool: (s: Tool) => void;
 }) {
   return (
     <div className="fixed top-2.5 left-10 flex gap-2 bg-[#232329] p-2 rounded-md">
