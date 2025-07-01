@@ -109,11 +109,11 @@ export class Game {
         
         this.existingShape.push(shape)
 
-        this.socket.send(JSON.stringify({
-                type: "chat",
-                message: JSON.stringify(shape),
-                roomId: this.roomId
-        }))
+        // this.socket.send(JSON.stringify({
+        //         type: "chat",
+        //         message: JSON.stringify(shape),
+        //         roomId: this.roomId
+        // }))
     }
 
     mousemove = (e:MouseEvent)=>{
@@ -128,9 +128,13 @@ export class Game {
                 return
             }
             if (selectedTool === "rect") {
-                this.ctx.strokeRect(this.startX,this.startY,width,height);            
+                this.ctx.beginPath();
+                // this.ctx.strokeRect(this.startX,this.startY,width,height);
+                this.ctx.roundRect(this.startX,this.startY,width,height,[10]);
+                this.ctx.stroke();
+
             }else if(selectedTool==="circle"){
-                console.log("circle working");
+                // console.log("circle working");
                 
                 const radius = Math.max(width,height)/2;
                 const centerX = this.startX + radius;
@@ -140,7 +144,7 @@ export class Game {
                 this.ctx.stroke();
                 this.ctx.closePath();
             }else if(selectedTool==="pencil"){
-                console.log("pencil working");
+                // console.log("pencil working");
                 
                 this.ctx.beginPath();
                 this.ctx.moveTo(this.startX,this.startY); 
@@ -166,7 +170,9 @@ export class Game {
         this.existingShape.map(shape=>{
             if (shape.type=='rect') {
                 this.ctx.strokeStyle= 'rgba(255,255,255)'
-                this.ctx.strokeRect(shape.x,shape.y,shape.width,shape.height)
+                this.ctx.beginPath()
+                this.ctx.roundRect(shape.x,shape.y,shape.width,shape.height,calculateRoundedCornerRadius(Math.min(shape.width,shape.height)))
+                this.ctx.stroke();
             }else if(shape.type=="circle"){
                 this.ctx.beginPath();
                 this.ctx.arc(shape.centerX,shape.centerY,Math.abs(shape.radius),0,Math.PI*2);
@@ -181,4 +187,18 @@ export class Game {
             }
         )
     }
+}
+
+function calculateRoundedCornerRadius(L_mm: number): number {
+
+  // Step 1: Calculate the scaling factor (G)
+  // Formula: G = L / 15
+  const G: number = L_mm / 15;
+  // Step 2: Calculate the multiplication factor (P)
+  // Formula: P = 1.25 + ((G - 2) / 2) * 0.25
+  const P: number = 1.25 + ((G - 2) / 2) * 0.25;
+  // Step 3: Calculate the rounded corners (r)
+  // Formula: r = 4 * P
+  const r_mm: number = 4 * P;
+  return Math.abs(r_mm);
 }
