@@ -30,7 +30,12 @@ type Shape = {
     bottomY: number,
     leftX: number,
     leftY: number
-
+} | {
+    type: "arrow",
+    fromX: number,
+    fromY: number,
+    toX: number,
+    toY: number
 }
 
 export class Game {
@@ -130,6 +135,14 @@ export class Game {
                 leftX: this.startX,
                 leftY: this.startY+height/2
             }
+        }else if (selectedTool=="arrow"){
+            shape = {
+                type: 'arrow',
+                fromX: this.startX,
+                fromY: this.startY,
+                toX: e.clientX,
+                toY: e.clientY
+            }
         }
         if(!shape) return
         
@@ -192,6 +205,13 @@ export class Game {
                     leftX: this.startX,
                     leftY: this.startY+height/2
                 }
+            }else if (selectedTool=="arrow"){
+                shape = {
+                    type: 'arrow',
+                    fromX: this.startX,
+                    fromY: this.startY,
+                    toX: e.clientX,
+                    toY: e.clientY
             }
             if (!shape) {
                 return
@@ -199,6 +219,7 @@ export class Game {
             drawShape(shape,this.ctx);
         }
     }
+}
     initMouseHandlers(){
         this.canvas.addEventListener("mousedown",this.mousedown)
 
@@ -255,9 +276,31 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         // this.ctx.arcTo(this.startX, this.startY+height/2,this.startX+width/2-radius,this.startY-radius,radius)
         ctx.closePath();
         ctx.stroke();
+    }else if (shape.type==="arrow") {
+        console.log(shape);
+        ctx.beginPath();
+        ctx.moveTo(shape.fromX, shape.fromY);
+        ctx.lineTo(shape.toX, shape.toY);
+        ctx.stroke();
+        const angle = Math.atan2(shape.toY-shape.fromY,shape.toX-shape.fromX)
+        ctx.beginPath();
+        const arrowLength = Math.abs(shape.toX-shape.fromX)<50?Math.abs(shape.toX-shape.fromX)/3:15;
+        ctx.moveTo(shape.toX, shape.toY);
+        ctx.lineTo(
+            shape.toX - arrowLength * Math.cos(angle - Math.PI / 6),
+            shape.toY - arrowLength * Math.sin(angle - Math.PI / 6)
+        );
+        ctx.moveTo(shape.toX, shape.toY);
+        ctx.lineTo(
+            shape.toX - arrowLength * Math.cos(angle + Math.PI / 6),
+            shape.toY - arrowLength * Math.sin(angle + Math.PI / 6)
+        );
+        ctx.stroke();
+        
     }
     
 }
+
 function calculateRoundedCornerRadius(L_mm: number): number {
 
   // Step 1: Calculate the scaling factor (G)
@@ -270,4 +313,8 @@ function calculateRoundedCornerRadius(L_mm: number): number {
   // Formula: r = 4 * P
   const r_mm: number = 4 * P;
   return Math.abs(r_mm);
+}
+
+function initMouseHandlers() {
+    throw new Error("Function not implemented.");
 }

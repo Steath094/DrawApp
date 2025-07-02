@@ -3,10 +3,10 @@ import React, { useState } from "react";
 import { useEffect } from "react";
 import { useRef } from "react";
 import IconButton from "./IconButton";
-import { Circle, Diamond, PencilIcon, RectangleHorizontal } from "lucide-react";
+import { ArrowUpRight, Circle, Diamond, PencilIcon, RectangleHorizontal } from "lucide-react";
 import { Game } from "@/draw/Game";
 
-export type Tool = "circle" | "rect" | "pencil" | "rhombus";
+export type Tool = "circle" | "rect" | "pencil" | "rhombus" | "arrow";
 export default function Canvas({
   roomId,
   socket,
@@ -86,6 +86,13 @@ export function ToolBar({
         icon={<Diamond/>}
         onClick={() => {
           setSelectedTool("rhombus");
+        }}
+      />
+      <IconButton
+        activated={selectedTool == "arrow"}
+        icon={<ArrowUpRight/>}
+        onClick={() => {
+          setSelectedTool("arrow");
         }}
       />
     </div>
