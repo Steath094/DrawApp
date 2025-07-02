@@ -20,11 +20,16 @@ type Shape = {
     endX: number,
     endY: number
 } | {
-    type: "rhomb",
-    x: number,
-    y: number,
-    width: number,
-    height: number
+    type: "rhombus",
+    topX: number,
+    topY: number,
+    rightX: number,
+    rightY: number,
+    bottomX: number,
+    bottomY: number,
+    leftX: number,
+    leftY: number
+
 }
 
 export class Game {
@@ -110,16 +115,28 @@ export class Game {
                 endX: e.clientX,
                 endY: e.clientY
             }
+        }else if (selectedTool=="rhombus"){
+            shape = {
+                type: 'rhombus',
+                topX: this.startX+width/2,
+                topY: this.startY,
+                rightX: this.startX + width,
+                rightY: this.startY + height / 2,
+                bottomX: this.startX+width/2,
+                bottomY: this.startY+height,
+                leftX: this.startX,
+                leftY: this.startY+height/2
+            }
         }
         if(!shape) return
         
         this.existingShape.push(shape)
 
-        // this.socket.send(JSON.stringify({
-        //         type: "chat",
-        //         message: JSON.stringify(shape),
-        //         roomId: this.roomId
-        // }))
+        this.socket.send(JSON.stringify({
+                type: "chat",
+                message: JSON.stringify(shape),
+                roomId: this.roomId
+        }))
     }
 
     mousemove = (e:MouseEvent)=>{
@@ -133,55 +150,48 @@ export class Game {
             if (!selectedTool) {
                 return
             }
-            if (selectedTool === "rect") {
-                this.ctx.beginPath();
-                // this.ctx.strokeRect(this.startX,this.startY,width,height);
-                this.ctx.roundRect(this.startX,this.startY,width,height,[10]);
-                this.ctx.stroke();
-
-            }else if(selectedTool==="circle"){
-                // console.log("circle working");
-                
+            let shape:Shape | null = null;
+            if (selectedTool=='rect') {
+                shape = {
+                    type: "rect",
+                    x: this.startX,
+                    y: this.startY,
+                    width,
+                    height
+                }
+            }else if (selectedTool==="circle"){
                 const radius = Math.max(width,height)/2;
-                const centerX = this.startX + radius;
-                const centerY = this.startY + radius;
-                this.ctx.beginPath();
-                this.ctx.arc(centerX,centerY,radius,0,Math.PI*2);
-                this.ctx.stroke();
-                this.ctx.closePath();
-            }else if(selectedTool==="pencil"){
-                // console.log("pencil working");
-                
-                this.ctx.beginPath();
-                this.ctx.moveTo(this.startX,this.startY); 
-                this.ctx.lineTo(e.clientX, e.clientY); 
-                this.ctx.stroke(); 
-                this.ctx.closePath();
-            }else if (selectedTool==="rhomb") {
-                const radius = calculateRoundedCornerRadius(Math.min(width,height));
-                this.ctx.beginPath();
-                this.ctx.moveTo(this.startX+width/2+radius,this.startY)
-                const x1 = this.startX + width
-                const y1 = this.startY + height / 2
-
-                //plain rhombus
-                // this.ctx.moveTo(this.startX+width/2,this.startY)
-                // this.ctx.lineTo(x1, y1)
-                // this.ctx.moveTo(x1, y1)
-                // this.ctx.lineTo(this.startX+width/2,this.startY+height);
-                // this.ctx.lineTo(this.startX, this.startY+height/2);
-                // this.ctx.lineTo(this.startX+width/2,this.startY)
-
-
-                //curved rhombus
-                this.ctx.moveTo(this.startX+width/2-radius,this.startY)
-                this.ctx.arcTo(this.startX+width/2,this.startY,x1,y1,radius)
-                this.ctx.arcTo(x1,y1,this.startX+width/2,this.startY+height,radius)
-                this.ctx.arcTo(this.startX+width/2,this.startY+height,this.startX, this.startY+height/2,radius)
-                this.ctx.arcTo(this.startX, this.startY+height/2,this.startX+width/2-radius,this.startY-radius,radius)
-                this.ctx.closePath();
-                this.ctx.stroke();
+                shape = {
+                    type:  "circle",
+                    radius: radius,
+                    centerX: this.startX+ radius,
+                    centerY: this.startY+radius
+                }
+            }else if (selectedTool=="pencil"){
+                shape = {
+                    type: 'pencil',
+                    startX: this.startX,
+                    startY: this.startY,
+                    endX: e.clientX,
+                    endY: e.clientY
+                }
+            }else if (selectedTool=="rhombus"){
+                shape = {
+                    type: 'rhombus',
+                    topX: this.startX+width/2,
+                    topY: this.startY,
+                    rightX: this.startX + width,
+                    rightY: this.startY + height / 2,
+                    bottomX: this.startX+width/2,
+                    bottomY: this.startY+height,
+                    leftX: this.startX,
+                    leftY: this.startY+height/2
+                }
             }
+            if (!shape) {
+                return
+            }
+            drawShape(shape,this.ctx);
         }
     }
     initMouseHandlers(){
@@ -198,27 +208,54 @@ export class Game {
         this.ctx.fillRect(0,0,this.canvas.width,this.canvas.height)
 
         this.existingShape.map(shape=>{
-            if (shape.type=='rect') {
-                this.ctx.strokeStyle= 'rgba(255,255,255)'
-                this.ctx.beginPath()
-                this.ctx.roundRect(shape.x,shape.y,shape.width,shape.height,calculateRoundedCornerRadius(Math.min(shape.width,shape.height)))
-                this.ctx.stroke();
-            }else if(shape.type=="circle"){
-                this.ctx.beginPath();
-                this.ctx.arc(shape.centerX,shape.centerY,Math.abs(shape.radius),0,Math.PI*2);
-                this.ctx.stroke();
-                this.ctx.closePath();
-            }else if(shape.type=="pencil"){
-                this.ctx.beginPath();
-                this.ctx.moveTo(shape.startX,shape.startY); 
-                this.ctx.lineTo(shape.endX,shape.endY); 
-                this.ctx.stroke(); 
-                }
-            }
+            drawShape(shape,this.ctx)
+        }
         )
     }
 }
+function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
+    if (shape.type=='rect') {
+        ctx.strokeStyle= 'rgba(255,255,255)'
+        ctx.beginPath()
+        ctx.roundRect(shape.x,shape.y,shape.width,shape.height,calculateRoundedCornerRadius(Math.min(shape.width,shape.height)))
+        ctx.stroke();
+    }else if(shape.type=="circle"){
+        ctx.beginPath();
+        ctx.arc(shape.centerX,shape.centerY,Math.abs(shape.radius),0,Math.PI*2);
+        ctx.stroke();
+        ctx.closePath();
+    }else if(shape.type=="pencil"){
+        ctx.beginPath();
+        ctx.moveTo(shape.startX,shape.startY); 
+        ctx.lineTo(shape.endX,shape.endY); 
+        ctx.stroke(); 
+    }else if(shape.type=="rhombus"){
+        ctx.beginPath();
+        //plain rhombus
+        ctx.moveTo(shape.topX,shape.topY)
+        ctx.lineTo(shape.rightX,shape.rightY)
+        ctx.moveTo(shape.rightX,shape.rightY)
+        ctx.lineTo(shape.bottomX,shape.bottomY);
+        ctx.lineTo(shape.leftX, shape.leftY);
+        ctx.lineTo(shape.topX,shape.topY)
 
+
+        //curved rhombus
+        // const radius = calculateRoundedCornerRadius(Math.min(width,height));
+        // this.ctx.moveTo(this.startX+width/2-radius,this.startY)
+        // this.ctx.arcTo(this.startX+width/2,this.startY,x1,y1,radius)
+        // this.ctx.arcTo(x1,y1,this.startX+width/2,this.startY+height,radius)
+        // this.ctx.arcTo(this.startX+width/2,this.startY+height,this.startX, this.startY+height/2,radius)
+        // this.ctx.arcTo(this.startX, this.startY+height/2,this.startX+width/2-radius,this.startY-radius,radius)
+
+
+
+
+        ctx.closePath();
+        ctx.stroke();
+    }
+    
+}
 function calculateRoundedCornerRadius(L_mm: number): number {
 
   // Step 1: Calculate the scaling factor (G)

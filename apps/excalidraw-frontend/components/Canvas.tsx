@@ -6,7 +6,7 @@ import IconButton from "./IconButton";
 import { Circle, Diamond, PencilIcon, RectangleHorizontal } from "lucide-react";
 import { Game } from "@/draw/Game";
 
-export type Tool = "circle" | "rect" | "pencil" | "rhomb";
+export type Tool = "circle" | "rect" | "pencil" | "rhombus";
 export default function Canvas({
   roomId,
   socket,
@@ -82,10 +82,10 @@ export function ToolBar({
         }}
       />
       <IconButton
-        activated={selectedTool == "rhomb"}
+        activated={selectedTool == "rhombus"}
         icon={<Diamond/>}
         onClick={() => {
-          setSelectedTool("rhomb");
+          setSelectedTool("rhombus");
         }}
       />
     </div>
