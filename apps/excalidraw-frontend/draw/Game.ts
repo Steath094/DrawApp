@@ -12,7 +12,8 @@ type Shape = {
     type: "circle",
     centerX: number,
     centerY: number,
-    radius: number
+    radiusX: number,
+    radiusY: number
 } | {
     type: "pencil",
     startX: number,
@@ -100,12 +101,14 @@ export class Game {
                 height
             }
         }else if (selectedTool==="circle"){
-            const radius = Math.max(width,height)/2;
+            const radiusY = height/2;
+            const radiusX = width/2;
             shape = {
                 type:  "circle",
-                radius: radius,
-                centerX: this.startX+ radius,
-                centerY: this.startY+radius
+                radiusX,
+                radiusY,
+                centerX: this.startX+ radiusX,
+                centerY: this.startY+radiusY
             }
         }else if (selectedTool=="pencil"){
             shape = {
@@ -160,12 +163,14 @@ export class Game {
                     height
                 }
             }else if (selectedTool==="circle"){
-                const radius = Math.max(width,height)/2;
+                const radiusY = height/2;
+                const radiusX = width/2;
                 shape = {
                     type:  "circle",
-                    radius: radius,
-                    centerX: this.startX+ radius,
-                    centerY: this.startY+radius
+                    radiusX,
+                    radiusY,
+                    centerX: this.startX+ radiusX,
+                    centerY: this.startY+radiusY
                 }
             }else if (selectedTool=="pencil"){
                 shape = {
@@ -221,7 +226,8 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         ctx.stroke();
     }else if(shape.type=="circle"){
         ctx.beginPath();
-        ctx.arc(shape.centerX,shape.centerY,Math.abs(shape.radius),0,Math.PI*2);
+        ctx.ellipse(shape.centerX, shape.centerY, Math.abs(shape.radiusX), Math.abs(shape.radiusY), 0, 0, 2* Math.PI, false);
+        ctx.lineWidth = 2;
         ctx.stroke();
         ctx.closePath();
     }else if(shape.type=="pencil"){
@@ -247,10 +253,6 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         // this.ctx.arcTo(x1,y1,this.startX+width/2,this.startY+height,radius)
         // this.ctx.arcTo(this.startX+width/2,this.startY+height,this.startX, this.startY+height/2,radius)
         // this.ctx.arcTo(this.startX, this.startY+height/2,this.startX+width/2-radius,this.startY-radius,radius)
-
-
-
-
         ctx.closePath();
         ctx.stroke();
     }
