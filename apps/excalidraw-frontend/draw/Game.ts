@@ -1,7 +1,6 @@
 import { Tool } from "@/components/Canvas";
 import { getExistingShapes } from "./http";
 
-
 type Shape = {
     type: "rect",
     x: number,
@@ -15,7 +14,7 @@ type Shape = {
     radiusX: number,
     radiusY: number
 } | {
-    type: "pencil",
+    type: "line",
     startX: number,
     startY: number,
     endX: number,
@@ -36,6 +35,11 @@ type Shape = {
     fromY: number,
     toX: number,
     toY: number
+} | {
+    type: "pencil",
+    clickX: number[],
+    clickY: number[],
+    dragging: boolean[]
 }
 
 export class Game {
@@ -46,8 +50,13 @@ export class Game {
     private clicked :boolean;
     private startX = 0;
     private startY = 0;
+    private clickX: number[];
+    private clickY: number[];
+    private dragging: boolean[];
+    private isDrawing:boolean;
     private selectedTool:Tool = 'rect';
     socket: WebSocket;
+
 
     constructor(canvas: HTMLCanvasElement,roomId:number,socket:WebSocket) {
         this.canvas = canvas;
@@ -56,6 +65,10 @@ export class Game {
         this.roomId = roomId;
         this.socket=socket
         this.clicked=false;
+        this.clickX=[];
+        this.clickY=[];
+        this.dragging=[];
+        this.isDrawing=false;
         this.init();
         this.initHandlers()
         this.initMouseHandlers()
@@ -87,8 +100,17 @@ export class Game {
 
     mousedown = (e:MouseEvent)=>{
         this.clicked=true;
+        this.isDrawing=true;
         this.startX = e.clientX;
         this.startY = e.clientY;
+        if (this.selectedTool=="pencil") {
+            this.clickX=[];
+            this.clickY=[];
+            this.dragging=[];
+            this.clickX.push(e.offsetX);
+            this.clickY.push(e.offsetY);
+            this.dragging.push(false);
+        }
     }
 
     mouseup = (e:MouseEvent)=>{
@@ -115,9 +137,9 @@ export class Game {
                 centerX: this.startX+ radiusX,
                 centerY: this.startY+radiusY
             }
-        }else if (selectedTool=="pencil"){
+        }else if (selectedTool=="line"){
             shape = {
-                type: 'pencil',
+                type: 'line',
                 startX: this.startX,
                 startY: this.startY,
                 endX: e.clientX,
@@ -185,9 +207,9 @@ export class Game {
                     centerX: this.startX+ radiusX,
                     centerY: this.startY+radiusY
                 }
-            }else if (selectedTool=="pencil"){
+            }else if (selectedTool=="line"){
                 shape = {
-                    type: 'pencil',
+                    type: 'line',
                     startX: this.startX,
                     startY: this.startY,
                     endX: e.clientX,
@@ -212,12 +234,32 @@ export class Game {
                     fromY: this.startY,
                     toX: e.clientX,
                     toY: e.clientY
+                }
+            }else if (selectedTool=="pencil") {
+                
+                this.clickX.push(e.offsetX);
+                this.clickY.push(e.offsetY);
+                this.dragging.push(true);
+                shape = {
+                    type: "pencil",
+                    clickX: this.clickX,
+                    clickY: this.clickY,
+                    dragging: this.dragging
+                }
+                // this.ctx.lineJoin = "round";
+                // this.ctx.lineCap = "round";
+                // const distance = Math.sqrt((e.offsetX - this.lastX) ** 2 + (e.offsetY - this.lastY) ** 2);
+                // this.ctx.lineWidth = Math.min(5, distance / 10) + 1; // Adjust line width
+                // this.ctx.beginPath();
+                // this.ctx.moveTo(this.lastX,this.lastY);
+                // this.ctx.lineTo(e.offsetX,e.offsetY);
+                // this.ctx.stroke();
+                // [this.lastX,this.lastY] = [e.offsetX,e.offsetY]
             }
             if (!shape) {
                 return
             }
             drawShape(shape,this.ctx);
-        }
     }
 }
     initMouseHandlers(){
@@ -251,7 +293,7 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         ctx.lineWidth = 2;
         ctx.stroke();
         ctx.closePath();
-    }else if(shape.type=="pencil"){
+    }else if(shape.type=="line"){
         ctx.beginPath();
         ctx.moveTo(shape.startX,shape.startY); 
         ctx.lineTo(shape.endX,shape.endY); 
@@ -296,7 +338,24 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
             shape.toY - arrowLength * Math.sin(angle + Math.PI / 6)
         );
         ctx.stroke();
-        
+    }else if(shape.type=="pencil"){
+        for (let i = 0; i < shape.clickX.length; i++) {
+            if (!shape.dragging[i] && i == 0) {
+            ctx.beginPath();
+            ctx.moveTo(shape.clickX[i], shape.clickY[i]);
+            ctx.stroke();
+        } else if (!shape.dragging[i] && i > 0) {
+            ctx.closePath();
+
+            ctx.beginPath();
+            ctx.moveTo(shape.clickX[i], shape.clickY[i]);
+            ctx.stroke();
+        } else {
+            ctx.lineTo(shape.clickX[i], shape.clickY[i]);
+            ctx.stroke();
+        }
+            
+        }
     }
     
 }

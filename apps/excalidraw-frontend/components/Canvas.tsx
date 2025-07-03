@@ -1,12 +1,12 @@
-import { initDraw } from "@/draw";
 import React, { useState } from "react";
 import { useEffect } from "react";
 import { useRef } from "react";
 import IconButton from "./IconButton";
 import { ArrowUpRight, Circle, Diamond, PencilIcon, RectangleHorizontal } from "lucide-react";
 import { Game } from "@/draw/Game";
+import LineIcon from "./Icons/LineIcon";
 
-export type Tool = "circle" | "rect" | "pencil" | "rhombus" | "arrow";
+export type Tool = "circle" | "rect" | "pencil" | "rhombus" | "arrow" | "line";
 export default function Canvas({
   roomId,
   socket,
@@ -62,9 +62,16 @@ export function ToolBar({
     <div className="fixed top-2.5 left-10 flex gap-2 bg-[#232329] p-2 rounded-md">
       <IconButton
         activated={selectedTool == "pencil"}
-        icon={<PencilIcon />}
+        icon={<PencilIcon/>}
         onClick={() => {
           setSelectedTool("pencil");
+        }}
+      />
+      <IconButton
+        activated={selectedTool == "line"}
+        icon={<LineIcon/>}
+        onClick={() => {
+          setSelectedTool("line");
         }}
       />
       <IconButton
