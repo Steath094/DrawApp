@@ -1,7 +1,7 @@
 import { Tool } from "@/components/Canvas";
 import { getExistingShapes } from "./http";
 import getStroke from "perfect-freehand";
-import { getSvgPathFromStroke } from "./Util";
+import { addInput, getSvgPathFromStroke } from "./Util";
 
 type Shape = {
     type: "rect",
@@ -40,6 +40,9 @@ type Shape = {
 } | {
     type: "pencil",
     points: number[][]
+} | {
+    type: "text",
+    text: string
 }
 
 export class Game {
@@ -160,6 +163,8 @@ export class Game {
                 type: "pencil",
                 points: this.points
             }
+        }else if (selectedTool=="text"){
+            addInput(e.offsetX,e.offsetY,false)
         }
         if(!shape) return
         
@@ -230,22 +235,13 @@ export class Game {
                     toX: e.clientX,
                     toY: e.clientY
                 }
-            }else if (selectedTool=="pencil") {
-                
+            }else if (selectedTool=="pencil") { 
                 this.points.push([e.offsetX,e.offsetY])
                 shape = {
                     type: "pencil",
                     points: this.points
                 }
-                // this.ctx.lineJoin = "round";
-                // this.ctx.lineCap = "round";
-                // const distance = Math.sqrt((e.offsetX - this.lastX) ** 2 + (e.offsetY - this.lastY) ** 2);
-                // this.ctx.lineWidth = Math.min(5, distance / 10) + 1; // Adjust line width
-                // this.ctx.beginPath();
-                // this.ctx.moveTo(this.lastX,this.lastY);
-                // this.ctx.lineTo(e.offsetX,e.offsetY);
-                // this.ctx.stroke();
-                // [this.lastX,this.lastY] = [e.offsetX,e.offsetY]
+            }else if (selectedTool=="text"){
             }
             if (!shape) {
                 return
@@ -253,12 +249,18 @@ export class Game {
             drawShape(shape,this.ctx);
     }
 }
+    clickHandler(e:MouseEvent){
+        if (this.selectedTool=="text") {
+            addInput(e.offsetX,e.offsetY,false)
+        }
+    }   
     initMouseHandlers(){
         this.canvas.addEventListener("mousedown",this.mousedown)
 
         this.canvas.addEventListener("mouseup",this.mouseup)
         
         this.canvas.addEventListener("mousemove",this.mousemove)
+        this.canvas.addEventListener("click",this.clickHandler)
     }
 
     clearCanvas(){

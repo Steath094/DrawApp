@@ -2,11 +2,11 @@ import React, { useState } from "react";
 import { useEffect } from "react";
 import { useRef } from "react";
 import IconButton from "./IconButton";
-import { ArrowUpRight, Circle, Diamond, PencilIcon, RectangleHorizontal } from "lucide-react";
+import { ArrowUpRight, Circle, Diamond, LetterText, PencilIcon, RectangleHorizontal } from "lucide-react";
 import { Game } from "@/draw/Game";
 import LineIcon from "./Icons/LineIcon";
 
-export type Tool = "circle" | "rect" | "pencil" | "rhombus" | "arrow" | "line";
+export type Tool = "circle" | "rect" | "pencil" | "rhombus" | "arrow" | "line" | "text";
 export default function Canvas({
   roomId,
   socket,
@@ -100,6 +100,13 @@ export function ToolBar({
         icon={<ArrowUpRight/>}
         onClick={() => {
           setSelectedTool("arrow");
+        }}
+      />
+      <IconButton
+        activated={selectedTool == "text"}
+        icon={<LetterText/>}
+        onClick={() => {
+          setSelectedTool("text");
         }}
       />
     </div>
