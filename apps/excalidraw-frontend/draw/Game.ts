@@ -1,5 +1,7 @@
 import { Tool } from "@/components/Canvas";
 import { getExistingShapes } from "./http";
+import getStroke from "perfect-freehand";
+import { getSvgPathFromStroke } from "./Util";
 
 type Shape = {
     type: "rect",
@@ -37,9 +39,7 @@ type Shape = {
     toY: number
 } | {
     type: "pencil",
-    clickX: number[],
-    clickY: number[],
-    dragging: boolean[]
+    points: number[][]
 }
 
 export class Game {
@@ -50,10 +50,7 @@ export class Game {
     private clicked :boolean;
     private startX = 0;
     private startY = 0;
-    private clickX: number[];
-    private clickY: number[];
-    private dragging: boolean[];
-    private isDrawing:boolean;
+    private points: number[][];
     private selectedTool:Tool = 'rect';
     socket: WebSocket;
 
@@ -65,10 +62,7 @@ export class Game {
         this.roomId = roomId;
         this.socket=socket
         this.clicked=false;
-        this.clickX=[];
-        this.clickY=[];
-        this.dragging=[];
-        this.isDrawing=false;
+        this.points = [];
         this.init();
         this.initHandlers()
         this.initMouseHandlers()
@@ -100,16 +94,11 @@ export class Game {
 
     mousedown = (e:MouseEvent)=>{
         this.clicked=true;
-        this.isDrawing=true;
         this.startX = e.clientX;
         this.startY = e.clientY;
         if (this.selectedTool=="pencil") {
-            this.clickX=[];
-            this.clickY=[];
-            this.dragging=[];
-            this.clickX.push(e.offsetX);
-            this.clickY.push(e.offsetY);
-            this.dragging.push(false);
+            this.points = [];
+            this.points.push([e.offsetX,e.offsetY])
         }
     }
 
@@ -164,6 +153,12 @@ export class Game {
                 fromY: this.startY,
                 toX: e.clientX,
                 toY: e.clientY
+            }
+        }else if(selectedTool=="pencil"){
+            this.points.push([e.offsetX,e.offsetY])
+            shape = {
+                type: "pencil",
+                points: this.points
             }
         }
         if(!shape) return
@@ -237,14 +232,10 @@ export class Game {
                 }
             }else if (selectedTool=="pencil") {
                 
-                this.clickX.push(e.offsetX);
-                this.clickY.push(e.offsetY);
-                this.dragging.push(true);
+                this.points.push([e.offsetX,e.offsetY])
                 shape = {
                     type: "pencil",
-                    clickX: this.clickX,
-                    clickY: this.clickY,
-                    dragging: this.dragging
+                    points: this.points
                 }
                 // this.ctx.lineJoin = "round";
                 // this.ctx.lineCap = "round";
@@ -339,23 +330,43 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         );
         ctx.stroke();
     }else if(shape.type=="pencil"){
-        for (let i = 0; i < shape.clickX.length; i++) {
-            if (!shape.dragging[i] && i == 0) {
-            ctx.beginPath();
-            ctx.moveTo(shape.clickX[i], shape.clickY[i]);
-            ctx.stroke();
-        } else if (!shape.dragging[i] && i > 0) {
-            ctx.closePath();
+        //using a library
 
-            ctx.beginPath();
-            ctx.moveTo(shape.clickX[i], shape.clickY[i]);
-            ctx.stroke();
-        } else {
-            ctx.lineTo(shape.clickX[i], shape.clickY[i]);
-            ctx.stroke();
-        }
+        const stroke = getStroke(shape.points,{
+            size: 8,
+            thinning: 0.5,
+            smoothing: 0.5,
+            streamline: 0.5,
+        });
+        const pathData = getSvgPathFromStroke(stroke);
+        ctx.beginPath();
+        ctx.fillStyle="rgba(255,255,255)"
+        ctx.fill(new Path2D(pathData));
+        ctx.closePath();
+
+
+
+        //manual
+
+        // ctx.lineJoin = 'round';
+        // ctx.lineCap = 'round';
+        // for (let i = 0; i < shape.clickX.length; i++) {
+        //     if (!shape.dragging[i] && i == 0) {
+        //     ctx.beginPath();
+        //     ctx.moveTo(shape.clickX[i], shape.clickY[i]);
+        //     ctx.stroke();
+        // } else if (!shape.dragging[i] && i > 0) {
+        //     ctx.closePath();
+
+        //     ctx.beginPath();
+        //     ctx.moveTo(shape.clickX[i], shape.clickY[i]);
+        //     ctx.stroke();
+        // } else {
+        //     ctx.lineTo(shape.clickX[i], shape.clickY[i]);
+        //     ctx.stroke();
+        // }
             
-        }
+        // }
     }
     
 }
