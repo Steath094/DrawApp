@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useEffect } from "react";
 import { useRef } from "react";
 import IconButton from "./IconButton";
-import { ArrowUpRight, Circle, Diamond, LetterText, PencilIcon, RectangleHorizontal } from "lucide-react";
+import { ArrowUpRight, Circle, Diamond, LetterText, LetterTextIcon, PencilIcon, RectangleHorizontal } from "lucide-react";
 import { Game } from "@/draw/Game";
 import LineIcon from "./Icons/LineIcon";
 
@@ -17,7 +17,6 @@ export default function Canvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [game,setGame] = useState<Game>()
   const [selectedTool, setSelectedTool] = useState<Tool>("rect");
-
   useEffect(() => {
     //@ts-ignore
     game?.setTool(selectedTool);
@@ -40,12 +39,14 @@ export default function Canvas({
         overflow: "hidden",
       }}
     >
+      <div className="textEditorContainer"></div>
       <canvas
         ref={canvasRef}
         className="border-2 border-black"
         height={window.innerHeight}
         width={window.innerWidth}
       ></canvas>
+
       <ToolBar selectedTool={selectedTool} setSelectedTool={setSelectedTool} />
     </div>
   );
@@ -53,7 +54,7 @@ export default function Canvas({
 
 export function ToolBar({
   selectedTool,
-  setSelectedTool,
+  setSelectedTool
 }: {
   selectedTool: Tool;
   setSelectedTool: (s: Tool) => void;
@@ -104,7 +105,7 @@ export function ToolBar({
       />
       <IconButton
         activated={selectedTool == "text"}
-        icon={<LetterText/>}
+        icon={<LetterTextIcon/>}
         onClick={() => {
           setSelectedTool("text");
         }}

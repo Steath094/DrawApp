@@ -1,7 +1,7 @@
 import { Tool } from "@/components/Canvas";
 import { getExistingShapes } from "./http";
 import getStroke from "perfect-freehand";
-import { addInput, getSvgPathFromStroke } from "./Util";
+import { getSvgPathFromStroke } from "./Util";
 
 type Shape = {
     type: "rect",
@@ -42,7 +42,11 @@ type Shape = {
     points: number[][]
 } | {
     type: "text",
-    text: string
+    text: string,
+    startX: number,
+    startY: number,
+    width:number,
+    height:number
 }
 
 export class Game {
@@ -57,6 +61,8 @@ export class Game {
     private selectedTool:Tool = 'rect';
     socket: WebSocket;
 
+    private activeTextarea: HTMLTextAreaElement | null = null;
+    private activeTextPosition: { x: number; y: number } | null = null;
 
     constructor(canvas: HTMLCanvasElement,roomId:number,socket:WebSocket) {
         this.canvas = canvas;
@@ -94,7 +100,81 @@ export class Game {
             }
         }
     }
+    private handleText(e:MouseEvent){
+        const x = e.clientX;
+        const y = e.clientY;
 
+        const textarea = document.createElement("textarea")
+        this.activeTextarea =textarea;
+        this.activeTextPosition= {x,y};
+        textarea.style.position="fixed"
+        textarea.style.top=`${y}px`
+        textarea.style.left=`${x}px`
+        textarea.style.resize="none";
+        textarea.style.zIndex="100";
+        textarea.style.color="white"
+        textarea.style.padding="2px"
+
+        textarea.classList.add('drawText')
+        const rawMaxWidth =
+        window.innerWidth || document.documentElement.clientWidth;
+        const rawMaxHeight =
+        window.innerHeight || document.documentElement.clientHeight;
+        
+        const calMaxWidth = rawMaxWidth - x - 40;
+        const calMaxHeight = rawMaxHeight - y - 40;
+        textarea.style.maxWidth = `${calMaxWidth}px`;
+        textarea.style.maxHeight = `${calMaxHeight}px`;
+
+        const textEditorContainer = document.querySelector(
+        ".textEditorContainer"
+        );
+        if (textEditorContainer) {
+            textEditorContainer.appendChild(textarea);
+            setTimeout(() => textarea.focus(), 0);
+        } else {
+            console.error("Text editor container not found");
+            return;
+        }
+        let hasUnsavedChanges = false;
+
+        const save = () =>{
+            const text = textarea.value.trim();
+            if (!text) {
+                textarea.remove();
+            }
+            this.activeTextarea=null;
+            this.activeTextPosition=null
+            const shape: Shape = {
+                type: 'text',
+                text,
+                startX: x,
+                startY: y,
+                height: textarea.offsetHeight,
+                width: textarea.offsetWidth
+            }
+            this.existingShape.push(shape);
+            this.socket.send(JSON.stringify({
+                type: "chat",
+                message: JSON.stringify(shape),
+                roomId: this.roomId
+            }))
+            if (textEditorContainer.contains(textarea)) {
+                textEditorContainer.removeChild(textarea);
+            }
+            this.clearCanvas();
+            hasUnsavedChanges=false;
+        }
+        textarea.addEventListener("input",()=>{
+            hasUnsavedChanges=true;
+        })
+        textarea.addEventListener("keydown",(e)=>{
+            if (e.key==="Enter") {
+                save();
+            }
+        })
+        
+    }
     mousedown = (e:MouseEvent)=>{
         this.clicked=true;
         this.startX = e.clientX;
@@ -103,9 +183,15 @@ export class Game {
             this.points = [];
             this.points.push([e.offsetX,e.offsetY])
         }
+        if (this.selectedTool=="text") {
+            this.clicked=false
+            this.handleText(e)
+        }
     }
 
     mouseup = (e:MouseEvent)=>{
+        console.log("mouseUp");
+        
         this.clicked = false;
         const width = e.clientX-this.startX
         const height = e.clientY-this.startY
@@ -164,7 +250,6 @@ export class Game {
                 points: this.points
             }
         }else if (selectedTool=="text"){
-            addInput(e.offsetX,e.offsetY,false)
         }
         if(!shape) return
         
@@ -248,19 +333,13 @@ export class Game {
             }
             drawShape(shape,this.ctx);
     }
-}
-    clickHandler(e:MouseEvent){
-        if (this.selectedTool=="text") {
-            addInput(e.offsetX,e.offsetY,false)
-        }
-    }   
+}   
     initMouseHandlers(){
         this.canvas.addEventListener("mousedown",this.mousedown)
 
         this.canvas.addEventListener("mouseup",this.mouseup)
         
         this.canvas.addEventListener("mousemove",this.mousemove)
-        this.canvas.addEventListener("click",this.clickHandler)
     }
 
     clearCanvas(){
@@ -369,6 +448,9 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         // }
             
         // }
+    }else if (shape.type=="text") {
+        ctx.font="20px sans-serif";
+        ctx.fillText(shape.text,shape.startX,shape.startY,shape.width)
     }
     
 }
