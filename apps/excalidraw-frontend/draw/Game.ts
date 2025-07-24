@@ -2,6 +2,7 @@ import { Tool } from "@/components/Canvas";
 import { getExistingShapes } from "./http";
 import getStroke from "perfect-freehand";
 import { getSvgPathFromStroke } from "./Util";
+import { TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_WIDTH } from "./constants";
 
 type Shape = {
     type: "rect",
@@ -107,6 +108,31 @@ export class Game {
         const textarea = document.createElement("textarea")
         this.activeTextarea =textarea;
         this.activeTextPosition= {x,y};
+        Object.assign(textarea.style,{
+            position: "absolute",
+            display: "inline-block",
+            backfaceVisibility: "hidden",
+            margin: "0",
+            padding: "0",
+            outline: "0",
+            resize: "none",
+            background: "transparent",
+            overflowX: "hidden",
+            overflowY: "hidden",
+            overflowWrap: "normal",
+            boxSizing: "content-box",
+            wordBreak: "normal",
+            whiteSpace: "pre",
+            verticalAlign: "top",
+            opacity: "1",
+            wrap: "off",
+            tabIndex: 0,
+            dir: "auto",
+            scrollbarWidth: "none", // Firefox
+            msOverflowStyle: "none", // IE/Edge
+            width: "auto",
+            minHeight: "auto",
+        })
         textarea.style.position="fixed"
         textarea.style.top=`${y}px`
         textarea.style.left=`${x}px`
@@ -121,8 +147,8 @@ export class Game {
         const rawMaxHeight =
         window.innerHeight || document.documentElement.clientHeight;
         
-        const calMaxWidth = rawMaxWidth - x - 40;
-        const calMaxHeight = rawMaxHeight - y - 40;
+        const calMaxWidth = rawMaxWidth - x - TEXT_ADJUSTED_WIDTH;
+        const calMaxHeight = rawMaxHeight - y - TEXT_ADJUSTED_HEIGHT;
         textarea.style.maxWidth = `${calMaxWidth}px`;
         textarea.style.maxHeight = `${calMaxHeight}px`;
 
@@ -137,11 +163,55 @@ export class Game {
             return;
         }
         let hasUnsavedChanges = false;
+        let span: HTMLSpanElement | null = null;
+        const resizeTextArea = () =>{
+            if (span && document.body.contains(span)) {
+                document.body.removeChild(span);
+            }
+            span = document.createElement("span")
+            Object.assign(span.style, {
+                visibility: "hidden",
+                position: "absolute",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-word",
+                font: textarea.style.font,
+                padding: "0",
+                margin: "0",
+                lineHeight: "1.2",
+            });
+            span.textContent = textarea.value || " ";
+            document.body.appendChild(span);
+            requestAnimationFrame(() => {
+                textarea.style.width = `${Math.max(span!.offsetWidth + TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_HEIGHT)}px`;
+                textarea.style.height = `${Math.max(span!.offsetHeight + TEXT_ADJUSTED_WIDTH, TEXT_ADJUSTED_WIDTH)}px`;
+                textarea.style.overflow = "scroll";
+            });
 
+        }
+        textarea.addEventListener("input",()=>{
+            hasUnsavedChanges=true;
+            resizeTextArea();
+        })
+        textarea.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") {
+                hasUnsavedChanges = true;
+                resizeTextArea();
+            }
+        });
+        let saveCalled = false;
         const save = () =>{
+            if (saveCalled) return;
+            saveCalled=true;
             const text = textarea.value.trim();
             if (!text) {
                 textarea.remove();
+                if (span && document.body.contains(span)) {
+                document.body.removeChild(span);
+                }
+                return;
+            }
+            if (!span) {
+                throw new Error("Span is null");
             }
             this.activeTextarea=null;
             this.activeTextPosition=null
@@ -150,7 +220,7 @@ export class Game {
                 text,
                 startX: x,
                 startY: y,
-                height: textarea.offsetHeight,
+                height: textarea.offsetHeight-TEXT_ADJUSTED_HEIGHT,
                 width: textarea.offsetWidth
             }
             this.existingShape.push(shape);
@@ -159,21 +229,38 @@ export class Game {
                 message: JSON.stringify(shape),
                 roomId: this.roomId
             }))
-            if (textEditorContainer.contains(textarea)) {
-                textEditorContainer.removeChild(textarea);
+            if (textEditorContainer?.contains(textarea)) {
+                textEditorContainer?.removeChild(textarea);
+                if (span && document.body.contains(span)) {
+                document.body.removeChild(span);
+                }
             }
             this.clearCanvas();
             hasUnsavedChanges=false;
         }
-        textarea.addEventListener("input",()=>{
-            hasUnsavedChanges=true;
-        })
+        textarea.addEventListener("input", () => {
+            hasUnsavedChanges = true;
+        });
         textarea.addEventListener("keydown",(e)=>{
-            if (e.key==="Enter") {
+            if (e.key==="Enter" && (e.ctrlKey)) {
                 save();
             }
         })
-        
+        const handleClickOutside = (e: MouseEvent) => {
+            if (!textarea.contains(e.target as Node)) {
+                document.removeEventListener("mousedown", handleClickOutside);
+                save();
+            }
+        };
+        setTimeout(() => {
+            document.addEventListener("mousedown", handleClickOutside);
+        }, 100);
+        textarea.addEventListener("blur", () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+            if (hasUnsavedChanges) {
+                save();
+            }
+        });
     }
     mousedown = (e:MouseEvent)=>{
         this.clicked=true;
@@ -450,7 +537,13 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         // }
     }else if (shape.type=="text") {
         ctx.font="20px sans-serif";
-        ctx.fillText(shape.text,shape.startX,shape.startY,shape.width)
+        ctx.fillStyle= "rgba(255,255,255)"
+        const lines = shape.text.split("\n");
+        lines.forEach((line,index)=>{
+            const ty = shape.startY+(index+1)*(20)*1.2;
+            ctx.fillText(line,shape.startX,ty)
+        })
+        // ctx.fillText(shape.text,shape.startX,shape.startY,shape.width)
     }
     
 }
