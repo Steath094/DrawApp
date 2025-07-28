@@ -32,3 +32,17 @@ export function getSvgPathFromStroke(points: number[][], closed = true) {
 
   return result
 }
+
+export function calculateRoundedCornerRadius(L_mm: number): number {
+
+  // Step 1: Calculate the scaling factor (G)
+  // Formula: G = L / 15
+  const G: number = L_mm / 15;
+  // Step 2: Calculate the multiplication factor (P)
+  // Formula: P = 1.25 + ((G - 2) / 2) * 0.25
+  const P: number = 1.25 + ((G - 2) / 2) * 0.25;
+  // Step 3: Calculate the rounded corners (r)
+  // Formula: r = 4 * P
+  const r_mm: number = 4 * P;
+  return Math.abs(r_mm);
+}

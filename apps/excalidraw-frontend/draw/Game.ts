@@ -1,7 +1,7 @@
 import { Tool } from "@/components/Canvas";
 import { getExistingShapes } from "./http";
 import getStroke from "perfect-freehand";
-import { getSvgPathFromStroke } from "./Util";
+import { getSvgPathFromStroke, calculateRoundedCornerRadius } from "./Util";
 import { TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_WIDTH } from "./constants";
 
 type Shape = {
@@ -61,7 +61,12 @@ export class Game {
     private points: number[][];
     private selectedTool:Tool = 'rect';
     socket: WebSocket;
-
+    private zoomlevel: number;
+    private offsetX: number;
+    private offsetY: number;
+    private isDragging = false;
+    private lastX=0;
+    private lastY=0;
     private activeTextarea: HTMLTextAreaElement | null = null;
     private activeTextPosition: { x: number; y: number } | null = null;
 
@@ -73,6 +78,9 @@ export class Game {
         this.socket=socket
         this.clicked=false;
         this.points = [];
+        this.zoomlevel=1;
+        this.offsetX=0;
+        this.offsetY=0;
         this.init();
         this.initHandlers()
         this.initMouseHandlers()
@@ -83,6 +91,8 @@ export class Game {
         this.canvas.removeEventListener("mouseup",this.mouseup)
         
         this.canvas.removeEventListener("mousemove",this.mousemove)
+
+        this.canvas.removeEventListener("wheel",this.mousewheel)
     }
     setTool(tool:Tool){
         this.selectedTool= tool;
@@ -266,6 +276,12 @@ export class Game {
         this.clicked=true;
         this.startX = e.clientX;
         this.startY = e.clientY;
+        if (this.selectedTool=="pan") {
+            this.isDragging=true;
+            this.clicked=false
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+        }
         if (this.selectedTool=="pencil") {
             this.points = [];
             this.points.push([e.offsetX,e.offsetY])
@@ -278,8 +294,8 @@ export class Game {
 
     mouseup = (e:MouseEvent)=>{
         console.log("mouseUp");
-        
         this.clicked = false;
+        this.isDragging = false;
         const width = e.clientX-this.startX
         const height = e.clientY-this.startY
         const selectedTool = this.selectedTool;
@@ -336,7 +352,6 @@ export class Game {
                 type: "pencil",
                 points: this.points
             }
-        }else if (selectedTool=="text"){
         }
         if(!shape) return
         
@@ -362,6 +377,9 @@ export class Game {
             }
             let shape:Shape | null = null;
             if (selectedTool=='rect') {
+                console.log("widht",width);
+                console.log(height);
+                
                 shape = {
                     type: "rect",
                     x: this.startX,
@@ -413,31 +431,65 @@ export class Game {
                     type: "pencil",
                     points: this.points
                 }
-            }else if (selectedTool=="text"){
             }
             if (!shape) {
                 return
             }
             drawShape(shape,this.ctx);
+        }
+        else if (this.isDragging) {
+            let dx = e.clientX - this.lastX;
+            let dy = e.clientY - this.lastY;
+            this.offsetX += dx;
+            this.offsetY += dy;
+            console.log(this.offsetX);
+            console.log(this.offsetY);
+            
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+            this.clearCanvas(); // Redraw the canvas
+        }
     }
-}   
+    mousewheel = (e:WheelEvent)=>{
+        e.preventDefault(); // Prevent page scrolling
+        const scaleAmount = 0.1;
+        const mouseX = e.clientX - this.canvas.getBoundingClientRect().left;
+        const mouseY = e.clientY - this.canvas.getBoundingClientRect().top;
+        const canvasX = (mouseX - this.offsetX) / this.zoomlevel;
+        const canvasY = (mouseY - this.offsetY) / this.zoomlevel;
+        if (e.deltaY < 0) { // Zoom in
+            this.zoomlevel += scaleAmount;
+            if (this.zoomlevel>1) this.zoomlevel = 1; // Prevent excessive zoom out
+        } else { // Zoom out
+            this.zoomlevel -= scaleAmount;
+            if (this.zoomlevel< 0.1) this.zoomlevel = 0.1; // Prevent excessive zoom out
+        }
+        this.offsetX = mouseX - canvasX * this.zoomlevel;
+        this.offsetY = mouseY - canvasY * this.zoomlevel;
+        this.clearCanvas();
+    } 
     initMouseHandlers(){
         this.canvas.addEventListener("mousedown",this.mousedown)
 
         this.canvas.addEventListener("mouseup",this.mouseup)
         
         this.canvas.addEventListener("mousemove",this.mousemove)
+
+        this.canvas.addEventListener("wheel", this.mousewheel)
     }
 
     clearCanvas(){
-        this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height)
-        this.ctx.fillStyle= "rgba(0,0,0)"
-        this.ctx.fillRect(0,0,this.canvas.width,this.canvas.height)
-
+        this.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+        this.ctx.save();
+        this.ctx.translate(this.offsetX,this.offsetY);
+        this.ctx.scale(this.zoomlevel, this.zoomlevel);
+        console.log("offsets",this.offsetX,this.offsetY);
+        
         this.existingShape.map(shape=>{
             drawShape(shape,this.ctx)
-        }
-        )
+        })
+        this.ctx.restore();
     }
 }
 function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
@@ -478,7 +530,7 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         ctx.closePath();
         ctx.stroke();
     }else if (shape.type==="arrow") {
-        console.log(shape);
+        // console.log(shape);
         ctx.beginPath();
         ctx.moveTo(shape.fromX, shape.fromY);
         ctx.lineTo(shape.toX, shape.toY);
@@ -545,23 +597,4 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         })
         // ctx.fillText(shape.text,shape.startX,shape.startY,shape.width)
     }
-    
-}
-
-function calculateRoundedCornerRadius(L_mm: number): number {
-
-  // Step 1: Calculate the scaling factor (G)
-  // Formula: G = L / 15
-  const G: number = L_mm / 15;
-  // Step 2: Calculate the multiplication factor (P)
-  // Formula: P = 1.25 + ((G - 2) / 2) * 0.25
-  const P: number = 1.25 + ((G - 2) / 2) * 0.25;
-  // Step 3: Calculate the rounded corners (r)
-  // Formula: r = 4 * P
-  const r_mm: number = 4 * P;
-  return Math.abs(r_mm);
-}
-
-function initMouseHandlers() {
-    throw new Error("Function not implemented.");
 }
