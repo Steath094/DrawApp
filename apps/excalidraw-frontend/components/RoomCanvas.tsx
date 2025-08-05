@@ -1,7 +1,6 @@
 "use client"
 
 import { WS_URL } from "@/app/config";
-import { initDraw } from "@/draw";
 import { useState } from "react";
 import { useEffect } from "react";
 import { useRef } from "react"

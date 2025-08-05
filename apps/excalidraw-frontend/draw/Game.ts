@@ -112,9 +112,9 @@ export class Game {
         }
     }
     private handleText(e:MouseEvent){
-        const x = e.clientX;
-        const y = e.clientY;
-
+        const { x, y } = this.transformPanScale(e.clientX, e.clientY);
+        console.log("worked");
+        
         const textarea = document.createElement("textarea")
         this.activeTextarea =textarea;
         this.activeTextPosition= {x,y};
@@ -133,6 +133,7 @@ export class Game {
             boxSizing: "content-box",
             wordBreak: "normal",
             whiteSpace: "pre",
+            transform: `translate(${x * this.zoomlevel + this.offsetX}px, ${y * this.zoomlevel + this.offsetY}px)`,
             verticalAlign: "top",
             opacity: "1",
             wrap: "off",
@@ -143,13 +144,13 @@ export class Game {
             width: "auto",
             minHeight: "auto",
         })
-        textarea.style.position="fixed"
-        textarea.style.top=`${y}px`
-        textarea.style.left=`${x}px`
-        textarea.style.resize="none";
+        // textarea.style.position="fixed"
+        // textarea.style.top=`${y}px`
+        // textarea.style.left=`${x}px`
+        // textarea.style.resize="none";
         textarea.style.zIndex="100";
         textarea.style.color="white"
-        textarea.style.padding="2px"
+        // textarea.style.padding="2px"
 
         textarea.classList.add('drawText')
         const rawMaxWidth =
@@ -274,8 +275,9 @@ export class Game {
     }
     mousedown = (e:MouseEvent)=>{
         this.clicked=true;
-        this.startX = e.clientX;
-        this.startY = e.clientY;
+        const {x,y} = this.transformPanScale(e.clientX,e.clientY)
+        this.startX = x;
+        this.startY = y;
         if (this.selectedTool=="pan") {
             this.isDragging=true;
             this.clicked=false
@@ -284,7 +286,7 @@ export class Game {
         }
         if (this.selectedTool=="pencil") {
             this.points = [];
-            this.points.push([e.offsetX,e.offsetY])
+            this.points.push([x,y])
         }
         if (this.selectedTool=="text") {
             this.clicked=false
@@ -293,11 +295,13 @@ export class Game {
     }
 
     mouseup = (e:MouseEvent)=>{
-        console.log("mouseUp");
         this.clicked = false;
         this.isDragging = false;
-        const width = e.clientX-this.startX
-        const height = e.clientY-this.startY
+        const {x ,y} = this.transformPanScale(e.clientX,e.clientY)
+        // const width = e.clientX-this.startX
+        // const height = e.clientY-this.startY
+        const width = x-this.startX
+        const height = y-this.startY
         const selectedTool = this.selectedTool;
         let shape: Shape | null = null;
         if (selectedTool=='rect') {
@@ -306,7 +310,7 @@ export class Game {
                 x: this.startX,
                 y: this.startY,
                 width,
-                height
+                height,
             }
         }else if (selectedTool==="circle"){
             const radiusY = height/2;
@@ -323,8 +327,8 @@ export class Game {
                 type: 'line',
                 startX: this.startX,
                 startY: this.startY,
-                endX: e.clientX,
-                endY: e.clientY
+                endX: x,
+                endY: y
             }
         }else if (selectedTool=="rhombus"){
             shape = {
@@ -343,11 +347,11 @@ export class Game {
                 type: 'arrow',
                 fromX: this.startX,
                 fromY: this.startY,
-                toX: e.clientX,
-                toY: e.clientY
+                toX: x,
+                toY: y
             }
         }else if(selectedTool=="pencil"){
-            this.points.push([e.offsetX,e.offsetY])
+            this.points.push([x,y])
             shape = {
                 type: "pencil",
                 points: this.points
@@ -356,7 +360,7 @@ export class Game {
         if(!shape) return
         
         this.existingShape.push(shape)
-
+        this.clearCanvas();
         this.socket.send(JSON.stringify({
                 type: "chat",
                 message: JSON.stringify(shape),
@@ -365,10 +369,13 @@ export class Game {
     }
 
     mousemove = (e:MouseEvent)=>{
+        const {x ,y} = this.transformPanScale(e.clientX,e.clientY)
         if (this.clicked) {
-            const width = e.clientX-this.startX
-            const height = e.clientY-this.startY
+            const width = x-this.startX
+            const height = y-this.startY
             this.clearCanvas();
+            this.ctx.save();
+        this.ctx.setTransform(this.zoomlevel, 0, 0, this.zoomlevel, this.offsetX, this.offsetY);
             this.ctx.strokeStyle= 'rgba(255,255,255)'
             const selectedTool:Tool = this.selectedTool!;
             console.log("selectedTool",selectedTool);
@@ -376,10 +383,7 @@ export class Game {
                 return
             }
             let shape:Shape | null = null;
-            if (selectedTool=='rect') {
-                console.log("widht",width);
-                console.log(height);
-                
+            if (selectedTool=='rect') {                
                 shape = {
                     type: "rect",
                     x: this.startX,
@@ -402,8 +406,8 @@ export class Game {
                     type: 'line',
                     startX: this.startX,
                     startY: this.startY,
-                    endX: e.clientX,
-                    endY: e.clientY
+                    endX: x,
+                    endY: y
                 }
             }else if (selectedTool=="rhombus"){
                 shape = {
@@ -422,50 +426,56 @@ export class Game {
                     type: 'arrow',
                     fromX: this.startX,
                     fromY: this.startY,
-                    toX: e.clientX,
-                    toY: e.clientY
+                    toX: x,
+                    toY: y
                 }
             }else if (selectedTool=="pencil") { 
-                this.points.push([e.offsetX,e.offsetY])
+                this.points.push([x,y])
                 shape = {
                     type: "pencil",
                     points: this.points
                 }
             }
-            if (!shape) {
-                return
+            if (shape) {
+                drawShape(shape,this.ctx);
             }
-            drawShape(shape,this.ctx);
+            this.ctx.restore();
         }
         else if (this.isDragging) {
             let dx = e.clientX - this.lastX;
             let dy = e.clientY - this.lastY;
             this.offsetX += dx;
             this.offsetY += dy;
-            console.log(this.offsetX);
-            console.log(this.offsetY);
-            
             this.lastX = e.clientX;
             this.lastY = e.clientY;
-            this.clearCanvas(); // Redraw the canvas
+
+            this.clearCanvas();
         }
     }
     mousewheel = (e:WheelEvent)=>{
         e.preventDefault(); // Prevent page scrolling
-        const scaleAmount = 0.1;
+        if (e.ctrlKey) {
+            const scaleAmount = 0.1;
         const mouseX = e.clientX - this.canvas.getBoundingClientRect().left;
         const mouseY = e.clientY - this.canvas.getBoundingClientRect().top;
         const canvasX = (mouseX - this.offsetX) / this.zoomlevel;
         const canvasY = (mouseY - this.offsetY) / this.zoomlevel;
         if (e.deltaY < 0) { // Zoom in
             this.zoomlevel += scaleAmount;
-            if (this.zoomlevel>1) this.zoomlevel = 1; // Prevent excessive zoom out
+            if (this.zoomlevel>4) this.zoomlevel = 4; // Prevent excessive zoom out
         } else { // Zoom out
             this.zoomlevel -= scaleAmount;
             if (this.zoomlevel< 0.1) this.zoomlevel = 0.1; // Prevent excessive zoom out
         }
         this.offsetX = mouseX - canvasX * this.zoomlevel;
         this.offsetY = mouseY - canvasY * this.zoomlevel;
+        }else{
+            this.offsetX -= e.deltaX
+            this.offsetY -= e.deltaY
+        }
+        
+        
+        
         this.clearCanvas();
     } 
     initMouseHandlers(){
@@ -477,15 +487,30 @@ export class Game {
 
         this.canvas.addEventListener("wheel", this.mousewheel)
     }
-
+    transformPanScale(
+    clientX: number,
+    clientY: number
+    ): { x: number; y: number } {
+        const rect = this.canvas.getBoundingClientRect();
+        const x = (clientX - rect.left - this.offsetX) / this.zoomlevel;
+        const y = (clientY - rect.top - this.offsetY) / this.zoomlevel;
+        return { x, y };
+    }
     clearCanvas(){
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+        this.ctx.clearRect(-this.offsetX/this.zoomlevel,-this.offsetY/this.zoomlevel,this.canvas.width/this.zoomlevel,this.canvas.height/this.zoomlevel);
         this.ctx.save();
-        this.ctx.translate(this.offsetX,this.offsetY);
-        this.ctx.scale(this.zoomlevel, this.zoomlevel);
-        console.log("offsets",this.offsetX,this.offsetY);
-        
+        this.ctx.setTransform(
+            this.zoomlevel,
+            0,
+            0,
+            this.zoomlevel,
+            this.offsetX,
+            this.offsetY
+        )
+        this.ctx.fillRect(-this.offsetX/this.zoomlevel,-this.offsetY/this.zoomlevel,this.canvas.width/this.zoomlevel,this.canvas.height/this.zoomlevel);
+        // this.ctx.translate(this.offsetX,this.offsetY);
+        // this.ctx.scale(this.zoomlevel, this.zoomlevel);
         this.existingShape.map(shape=>{
             drawShape(shape,this.ctx)
         })
@@ -494,7 +519,7 @@ export class Game {
 }
 function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
     if (shape.type=='rect') {
-        ctx.strokeStyle= 'rgba(255,255,255)'
+        ctx.strokeStyle= 'rgba(255,255,255)'      
         ctx.beginPath()
         ctx.roundRect(shape.x,shape.y,shape.width,shape.height,calculateRoundedCornerRadius(Math.min(shape.width,shape.height)))
         ctx.stroke();
