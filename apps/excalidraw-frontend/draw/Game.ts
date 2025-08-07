@@ -3,7 +3,7 @@ import { getExistingShapes } from "./http";
 import getStroke from "perfect-freehand";
 import { getSvgPathFromStroke, calculateRoundedCornerRadius } from "./Util";
 import { TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_WIDTH } from "./constants";
-
+import { v4 as uuidv4 } from "uuid";
 type Shape = {
     type: "rect",
     x: number,

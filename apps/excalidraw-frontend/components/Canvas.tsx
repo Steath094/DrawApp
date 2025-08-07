@@ -2,12 +2,12 @@ import React, { useState } from "react";
 import { useEffect } from "react";
 import { useRef } from "react";
 import IconButton from "./IconButton";
-import { ArrowUpRight, Circle, Diamond, Hand, LetterText, LetterTextIcon, PencilIcon, RectangleHorizontal } from "lucide-react";
+import { ArrowUpRight, Circle, Diamond, Hand, LetterTextIcon, MousePointer, PencilIcon, RectangleHorizontal } from "lucide-react";
 import { Game } from "@/draw/Game";
 import LineIcon from "./Icons/LineIcon";
 import { useWindowSize } from "@/customHooks/useWindowSize";
 
-export type Tool = "pan" | "circle" | "rect" | "pencil" | "rhombus" | "arrow" | "line" | "text";
+export type Tool = "selection" | "pan" | "circle" | "rect" | "pencil" | "rhombus" | "arrow" | "line" | "text";
 export default function Canvas({
   roomId,
   socket,
@@ -43,12 +43,18 @@ export default function Canvas({
     >
       <div className="textEditorContainer"></div>
       <canvas
+        id="static-canvas"
         ref={canvasRef}
         className="border-2 border-black bg-black"
         height={width}
         width={height}
       ></canvas>
-
+      <canvas
+        id="interaction-canvas"
+        className="border-2 border-black bg-black"
+        height={width}
+        width={height}
+      ></canvas>
       <ToolBar selectedTool={selectedTool} setSelectedTool={setSelectedTool} />
     </div>
   );
@@ -68,6 +74,13 @@ export function ToolBar({
         icon={<Hand/>}
         onClick={() => {
           setSelectedTool("pan");
+        }}
+      />
+      <IconButton
+        activated={selectedTool == "selection"}
+        icon={<MousePointer/>}
+        onClick={() => {
+          setSelectedTool("selection");
         }}
       />
       <IconButton
