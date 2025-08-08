@@ -16,6 +16,7 @@ export default function Canvas({
   socket: WebSocket;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const interativeCanvasRef = useRef<HTMLCanvasElement>(null);
   const [game,setGame] = useState<Game>()
   const [selectedTool, setSelectedTool] = useState<Tool>("rect");
   const {width,height} = useWindowSize();  
@@ -26,8 +27,8 @@ export default function Canvas({
     
   }, [selectedTool,game]);
   useEffect(() => {
-    if (canvasRef.current) {
-      const g = new Game(canvasRef.current,roomId,socket)
+    if (canvasRef.current && interativeCanvasRef.current) {
+      const g = new Game(canvasRef.current,interativeCanvasRef.current,roomId,socket)
       setGame(g);
       return () =>{
         g.destroy();
@@ -40,18 +41,20 @@ export default function Canvas({
         height: "100vh",
         overflow: "hidden",
       }}
+      className="relative"
     >
       <div className="textEditorContainer"></div>
       <canvas
         id="static-canvas"
         ref={canvasRef}
-        className="border-2 border-black bg-black"
+        className="absolute top-0 left-0 border-2 border-black bg-black z-10"
         height={width}
         width={height}
       ></canvas>
       <canvas
         id="interaction-canvas"
-        className="border-2 border-black bg-black"
+        ref={interativeCanvasRef}
+        className="absolute top-0 left-0 bg-transparent z-20"
         height={width}
         width={height}
       ></canvas>
@@ -68,7 +71,7 @@ export function ToolBar({
   setSelectedTool: (s: Tool) => void;
 }) {
   return (
-    <div className="fixed top-2.5 left-10 flex gap-2 bg-[#232329] p-2 rounded-md">
+    <div className="fixed top-2.5 left-10 flex gap-2 bg-[#232329] p-2 rounded-md z-30">
       <IconButton
         activated={selectedTool == "pan"}
         icon={<Hand/>}

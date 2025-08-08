@@ -2,7 +2,7 @@ import { Tool } from "@/components/Canvas";
 import { getExistingShapes } from "./http";
 import getStroke from "perfect-freehand";
 import { getSvgPathFromStroke, calculateRoundedCornerRadius } from "./Util";
-import { TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_WIDTH } from "./constants";
+import { SELECTION_PADDING_PX, SELECTION_TOLERENCE_PX, TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_WIDTH } from "./constants";
 import { v4 as uuidv4 } from "uuid";
 type Shape = {
     id: string | null,
@@ -60,6 +60,8 @@ type Shape = {
 export class Game {
     private canvas:HTMLCanvasElement;
     private ctx:CanvasRenderingContext2D;
+    private interactiveCanvas:HTMLCanvasElement;
+    private interactionCtx:CanvasRenderingContext2D;
     private existingShape: Shape[];
     private roomId: number;
     private clicked :boolean;
@@ -74,12 +76,17 @@ export class Game {
     private isDragging = false;
     private lastX=0;
     private lastY=0;
+    //text handling
     private activeTextarea: HTMLTextAreaElement | null = null;
     private activeTextPosition: { x: number; y: number } | null = null;
-
-    constructor(canvas: HTMLCanvasElement,roomId:number,socket:WebSocket) {
+    //selection
+    private selectedShapeUUID: string | null = null;
+    
+    constructor(canvas: HTMLCanvasElement,interactiveCanvas: HTMLCanvasElement,roomId:number,socket:WebSocket) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d')!;
+        this.interactiveCanvas=interactiveCanvas
+        this.interactionCtx= interactiveCanvas.getContext("2d")!;
         this.existingShape = [];
         this.roomId = roomId;
         this.socket=socket
@@ -93,16 +100,18 @@ export class Game {
         this.initMouseHandlers()
     }
     destroy(){
-        this.canvas.removeEventListener("mousedown",this.mousedown)
+        this.interactiveCanvas.removeEventListener("mousedown",this.mousedown)
 
-        this.canvas.removeEventListener("mouseup",this.mouseup)
+        this.interactiveCanvas.removeEventListener("mouseup",this.mouseup)
         
-        this.canvas.removeEventListener("mousemove",this.mousemove)
+        this.interactiveCanvas.removeEventListener("mousemove",this.mousemove)
 
-        this.canvas.removeEventListener("wheel",this.mousewheel)
+        this.interactiveCanvas.removeEventListener("wheel",this.mousewheel)
     }
     setTool(tool:Tool){
+        this.selectedShapeUUID = null;
         this.selectedTool= tool;
+        // this.redrawInteractionLayer();
     }
     async init(){
         this.existingShape = await getExistingShapes(this.roomId);
@@ -282,6 +291,15 @@ export class Game {
         });
     }
     mousedown = (e:MouseEvent)=>{
+        if (this.selectedTool === 'selection') {
+        const { x, y } = this.transformPanScale(e.clientX, e.clientY);
+        const clickedShapeUUID = this.getShapeUUIDAtPosition(x, y);
+        console.log(clickedShapeUUID);
+        
+        this.selectedShapeUUID = clickedShapeUUID;
+        this.redrawInteractionLayer();
+        return; 
+    }
         this.clicked=true;
         const {x,y} = this.transformPanScale(e.clientX,e.clientY)
         this.startX = x;
@@ -497,15 +515,16 @@ export class Game {
         
         
         this.clearCanvas();
+        this.redrawInteractionLayer();
     } 
     initMouseHandlers(){
-        this.canvas.addEventListener("mousedown",this.mousedown)
+        this.interactiveCanvas.addEventListener("mousedown",this.mousedown)
 
-        this.canvas.addEventListener("mouseup",this.mouseup)
+        this.interactiveCanvas.addEventListener("mouseup",this.mouseup)
         
-        this.canvas.addEventListener("mousemove",this.mousemove)
+        this.interactiveCanvas.addEventListener("mousemove",this.mousemove)
 
-        this.canvas.addEventListener("wheel", this.mousewheel)
+        this.interactiveCanvas.addEventListener("wheel", this.mousewheel)
     }
     transformPanScale(
     clientX: number,
@@ -535,6 +554,74 @@ export class Game {
             drawShape(shape,this.ctx)
         })
         this.ctx.restore();
+    }
+    private redrawInteractionLayer() {
+        const ctx = this.interactionCtx; 
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, this.interactiveCanvas.width, this.interactiveCanvas.height);
+        if (this.selectedShapeUUID) {
+            const selectedShape = this.existingShape.find(s => s.id === this.selectedShapeUUID);
+            if (selectedShape) {
+                const bounds = getShapeBounds(selectedShape);
+                const worldPadding = SELECTION_PADDING_PX / this.zoomlevel;
+                ctx.save();
+                ctx.setTransform(this.zoomlevel, 0, 0, this.zoomlevel, this.offsetX, this.offsetY);
+                ctx.strokeStyle = 'rgb(30, 144, 255)';
+                // ctx.lineWidth = 2;
+                ctx.strokeRect(bounds.x-worldPadding, bounds.y-worldPadding, bounds.width+(worldPadding*2), bounds.height+(worldPadding*2));
+                ctx.restore();
+            }
+        }
+    }
+    private getShapeUUIDAtPosition(clickX: number, clickY: number): string | null {
+        const worldTolerance = SELECTION_TOLERENCE_PX / this.zoomlevel;
+        const clickPoint = { x: clickX, y: clickY };
+
+        // -----------------------------------------------------------------
+        // ## BROAD PHASE ##
+        // Create the small query box around the mouse cursor.
+        // -----------------------------------------------------------------
+        const queryBox = {
+            x: clickX - worldTolerance,
+            y: clickY - worldTolerance,
+            width: worldTolerance * 2,
+            height: worldTolerance * 2
+        };
+        const candidates = this.existingShape.filter(shape => 
+            doBoxesIntersect(queryBox, getShapeBounds(shape))
+        );
+        if (candidates.length === 0) {
+            return null;
+        }
+
+        // -----------------------------------------------------------------
+        // ## NARROW PHASE ##
+        // Now, run the precise distance check ONLY on the few candidates we found.
+        // -----------------------------------------------------------------
+        let proximityMatch: { uuid: string | null, distance: number } = { uuid: null, distance: Infinity };
+        let directHitUUID: string | null = null;
+        for (let i = candidates.length - 1; i >= 0; i--) {
+            const shape = candidates[i];
+            const distance = getDistanceToShapeOutline(clickPoint, shape);
+
+            if (distance < 1e-6) {
+                directHitUUID = shape.id;
+                break; 
+            }
+
+            if (distance < proximityMatch.distance) {
+                proximityMatch = { uuid: shape.id, distance };
+            }
+        }
+        if (directHitUUID) {
+            return directHitUUID;
+        }
+
+        if (proximityMatch.distance < worldTolerance) {
+            return proximityMatch.uuid;
+        }
+
+        return null;
     }
 }
 function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
@@ -642,4 +729,201 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         })
         // ctx.fillText(shape.text,shape.startX,shape.startY,shape.width)
     }
+}
+function getShapeBounds(shape:Shape): {x:number,y:number,width:number,height:number}{
+    switch (shape.type) {
+        case "rect":{
+            const x = shape.width>=0?shape.x:shape.x+shape.width;
+            const y = shape.height>=0?shape.y:shape.y+shape.height;
+            const width = Math.abs(shape.width);
+            const height = Math.abs(shape.height);
+            return {x,y,width,height};
+        }
+        case "circle":{
+            const radiusX = Math.abs(shape.radiusX);
+            const radiusY = Math.abs(shape.radiusY);
+            return {
+                x: shape.centerX-radiusX,
+                y: shape.centerY-radiusY,
+                width: radiusX*2,
+                height: radiusY*2
+            };
+        }
+        case "arrow":
+        case "line" :{
+            const fromX = shape.type === 'line' ? shape.startX : shape.fromX;
+            const fromY = shape.type === 'line' ? shape.startY : shape.fromY;
+            const toX = shape.type === 'line' ? shape.endX : shape.toX;
+            const toY = shape.type === 'line' ? shape.endY : shape.toY;
+
+            const minX = Math.min(fromX, toX);
+            const minY = Math.min(fromY, toY);
+            const maxX = Math.max(fromX, toX);
+            const maxY = Math.max(fromY, toY);
+            return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        }
+        case "rhombus": {
+            const minX = Math.min(shape.leftX, shape.rightX);
+            const minY = Math.min(shape.topY, shape.bottomY);
+            const maxX = Math.max(shape.leftX, shape.rightX);
+            const maxY = Math.max(shape.topY, shape.bottomY);
+            return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        }
+
+        case "pencil": {
+            if (shape.points.length === 0) {
+                return { x: 0, y: 0, width: 0, height: 0 };
+            }
+            let minX = Infinity, minY = Infinity;
+            let maxX = -Infinity, maxY = -Infinity;
+
+            for (const point of shape.points) {
+                minX = Math.min(minX, point[0]);
+                minY = Math.min(minY, point[1]);
+                maxX = Math.max(maxX, point[0]);
+                maxY = Math.max(maxY, point[1]);
+            }
+            return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+        }
+        
+        case "text": {
+            return { x: shape.startX, y: shape.startY, width: shape.width, height: shape.height };
+        }
+        default:
+            return {x:0,y:0,width:0,height: 0};
+    }
+}
+
+function getDistanceToShapeOutline(point: {x: number, y: number}, shape: Shape): number {
+    switch (shape.type) {
+        case "rect": {
+            // A rectangle's outline is its four sides. We find the shortest
+            // distance to any of the four line segments that make up the rectangle.
+            const bounds = getShapeBounds(shape); // Use bounds to handle negative width/height
+            const p1 = { x: bounds.x, y: bounds.y };
+            const p2 = { x: bounds.x + bounds.width, y: bounds.y };
+            const p3 = { x: bounds.x + bounds.width, y: bounds.y + bounds.height };
+            const p4 = { x: bounds.x, y: bounds.y + bounds.height };
+            
+            return Math.min(
+                distanceToLineSegment(point, p1, p2),
+                distanceToLineSegment(point, p2, p3),
+                distanceToLineSegment(point, p3, p4),
+                distanceToLineSegment(point, p4, p1)
+            );
+        }
+
+        case "line": {
+            const start = { x: shape.startX, y: shape.startY };
+            const end = { x: shape.endX, y: shape.endY };
+            return distanceToLineSegment(point, start, end);
+        }
+
+        case "arrow": {
+            const start = { x: shape.fromX, y: shape.fromY };
+            const end = { x: shape.toX, y: shape.toY };
+            return distanceToLineSegment(point, start, end);
+        }
+
+        case "rhombus": {
+            const p1 = { x: shape.topX, y: shape.topY };
+            const p2 = { x: shape.rightX, y: shape.rightY };
+            const p3 = { x: shape.bottomX, y: shape.bottomY };
+            const p4 = { x: shape.leftX, y: shape.leftY };
+
+            return Math.min(
+                distanceToLineSegment(point, p1, p2),
+                distanceToLineSegment(point, p2, p3),
+                distanceToLineSegment(point, p3, p4),
+                distanceToLineSegment(point, p4, p1)
+            );
+        }
+
+        case "circle": {
+            const dx = point.x - shape.centerX;
+            const dy = point.y - shape.centerY;
+
+            if (dx === 0 && dy === 0) return Math.min(shape.radiusX, shape.radiusY);
+
+            const angle = Math.atan2(dy, dx);
+
+            const pointOnOutline = {
+                x: shape.centerX + Math.abs(shape.radiusX) * Math.cos(angle),
+                y: shape.centerY + Math.abs(shape.radiusY) * Math.sin(angle)
+            };
+
+            const distToOutlineX = point.x - pointOnOutline.x;
+            const distToOutlineY = point.y - pointOnOutline.y;
+            return Math.sqrt(distToOutlineX * distToOutlineX + distToOutlineY * distToOutlineY);
+        }
+
+        case "pencil": {
+            if (shape.points.length < 2) return Infinity;
+
+            let minDistance = Infinity;
+            for (let i = 0; i < shape.points.length - 1; i++) {
+                const p1 = { x: shape.points[i][0], y: shape.points[i][1] };
+                const p2 = { x: shape.points[i+1][0], y: shape.points[i+1][1] };
+                const distance = distanceToLineSegment(point, p1, p2);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                }
+            }
+            return minDistance;
+        }
+
+        case "text": {
+            const bounds = getShapeBounds(shape);
+            const p1 = { x: bounds.x, y: bounds.y };
+            const p2 = { x: bounds.x + bounds.width, y: bounds.y };
+            const p3 = { x: bounds.x + bounds.width, y: bounds.y + bounds.height };
+            const p4 = { x: bounds.x, y: bounds.y + bounds.height };
+            
+            return Math.min(
+                distanceToLineSegment(point, p1, p2),
+                distanceToLineSegment(point, p2, p3),
+                distanceToLineSegment(point, p3, p4),
+                distanceToLineSegment(point, p4, p1)
+            );
+        }
+        default:
+            return Infinity;
+    }
+}
+function distanceToLineSegment(
+    p: { x: number; y: number },
+    a: { x: number; y: number },
+    b: { x: number; y: number }
+): number {
+    const L2 = Math.pow(b.x - a.x, 2) + Math.pow(b.y - a.y, 2);
+    if (L2 === 0) {
+        return Math.sqrt(Math.pow(p.x - a.x, 2) + Math.pow(p.y - a.y, 2));
+    }
+    let t = ((p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y)) / L2;
+    t = Math.max(0, Math.min(1, t));
+    const closestPoint = {
+        x: a.x + t * (b.x - a.x),
+        y: a.y + t * (b.y - a.y)
+    };
+    const dx = p.x - closestPoint.x;
+    const dy = p.y - closestPoint.y;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+function doBoxesIntersect(boxA:{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}, boxB:{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}) {
+    return (
+        boxA.x < boxB.x + boxB.width &&
+        boxA.x + boxA.width > boxB.x &&
+        boxA.y < boxB.y + boxB.height &&
+        boxA.y + boxA.height > boxB.y
+    );
 }
