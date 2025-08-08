@@ -5,24 +5,28 @@ import { getSvgPathFromStroke, calculateRoundedCornerRadius } from "./Util";
 import { TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_WIDTH } from "./constants";
 import { v4 as uuidv4 } from "uuid";
 type Shape = {
+    id: string | null,
     type: "rect",
     x: number,
     y: number,
     width: number,
     height: number
 } | {
+    id: string | null,
     type: "circle",
     centerX: number,
     centerY: number,
     radiusX: number,
     radiusY: number
 } | {
+    id: string | null,
     type: "line",
     startX: number,
     startY: number,
     endX: number,
     endY: number
 } | {
+    id: string | null,
     type: "rhombus",
     topX: number,
     topY: number,
@@ -33,15 +37,18 @@ type Shape = {
     leftX: number,
     leftY: number
 } | {
+    id: string | null,
     type: "arrow",
     fromX: number,
     fromY: number,
     toX: number,
     toY: number
 } | {
+    id: string | null,
     type: "pencil",
     points: number[][]
 } | {
+    id: string | null,
     type: "text",
     text: string,
     startX: number,
@@ -227,6 +234,7 @@ export class Game {
             this.activeTextarea=null;
             this.activeTextPosition=null
             const shape: Shape = {
+                id: uuidv4(),
                 type: 'text',
                 text,
                 startX: x,
@@ -306,6 +314,7 @@ export class Game {
         let shape: Shape | null = null;
         if (selectedTool=='rect') {
             shape = {
+                id: uuidv4(),
                 type: "rect",
                 x: this.startX,
                 y: this.startY,
@@ -316,6 +325,7 @@ export class Game {
             const radiusY = height/2;
             const radiusX = width/2;
             shape = {
+                id: uuidv4(),
                 type:  "circle",
                 radiusX,
                 radiusY,
@@ -324,6 +334,7 @@ export class Game {
             }
         }else if (selectedTool=="line"){
             shape = {
+                id: uuidv4(),
                 type: 'line',
                 startX: this.startX,
                 startY: this.startY,
@@ -332,6 +343,7 @@ export class Game {
             }
         }else if (selectedTool=="rhombus"){
             shape = {
+                id: uuidv4(),
                 type: 'rhombus',
                 topX: this.startX+width/2,
                 topY: this.startY,
@@ -344,6 +356,7 @@ export class Game {
             }
         }else if (selectedTool=="arrow"){
             shape = {
+                id: uuidv4(),
                 type: 'arrow',
                 fromX: this.startX,
                 fromY: this.startY,
@@ -353,6 +366,7 @@ export class Game {
         }else if(selectedTool=="pencil"){
             this.points.push([x,y])
             shape = {
+                id: uuidv4(),
                 type: "pencil",
                 points: this.points
             }
@@ -385,6 +399,7 @@ export class Game {
             let shape:Shape | null = null;
             if (selectedTool=='rect') {                
                 shape = {
+                    id: null,
                     type: "rect",
                     x: this.startX,
                     y: this.startY,
@@ -395,6 +410,7 @@ export class Game {
                 const radiusY = height/2;
                 const radiusX = width/2;
                 shape = {
+                    id: null,
                     type:  "circle",
                     radiusX,
                     radiusY,
@@ -403,6 +419,7 @@ export class Game {
                 }
             }else if (selectedTool=="line"){
                 shape = {
+                    id: null,
                     type: 'line',
                     startX: this.startX,
                     startY: this.startY,
@@ -411,6 +428,7 @@ export class Game {
                 }
             }else if (selectedTool=="rhombus"){
                 shape = {
+                    id: null,
                     type: 'rhombus',
                     topX: this.startX+width/2,
                     topY: this.startY,
@@ -423,6 +441,7 @@ export class Game {
                 }
             }else if (selectedTool=="arrow"){
                 shape = {
+                    id: null,
                     type: 'arrow',
                     fromX: this.startX,
                     fromY: this.startY,
@@ -432,6 +451,7 @@ export class Game {
             }else if (selectedTool=="pencil") { 
                 this.points.push([x,y])
                 shape = {
+                    id: null,
                     type: "pencil",
                     points: this.points
                 }
