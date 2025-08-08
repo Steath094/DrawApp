@@ -68,7 +68,7 @@ export class Game {
     private startX = 0;
     private startY = 0;
     private points: number[][];
-    private selectedTool:Tool = 'rect';
+    private selectedTool:Tool = 'selection';
     socket: WebSocket;
     private zoomlevel: number;
     private offsetX: number;
@@ -81,7 +81,8 @@ export class Game {
     private activeTextPosition: { x: number; y: number } | null = null;
     //selection
     private selectedShapeUUID: string | null = null;
-    
+    // hoverSelection
+    private hoveredShapeUUID: string | null = null;
     constructor(canvas: HTMLCanvasElement,interactiveCanvas: HTMLCanvasElement,roomId:number,socket:WebSocket) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d')!;
@@ -488,6 +489,14 @@ export class Game {
             this.lastY = e.clientY;
 
             this.clearCanvas();
+        }
+        if (!this.clicked && !this.isDragging) {
+        const { x, y } = this.transformPanScale(e.clientX, e.clientY);
+        const foundUUID = this.getShapeUUIDAtPosition(x, y);
+            if (foundUUID !== this.hoveredShapeUUID) {
+                this.hoveredShapeUUID = foundUUID;
+                this.interactiveCanvas.style.cursor = foundUUID ? 'move' : 'default';
+            }
         }
     }
     mousewheel = (e:WheelEvent)=>{

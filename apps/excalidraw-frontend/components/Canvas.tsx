@@ -18,7 +18,7 @@ export default function Canvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const interativeCanvasRef = useRef<HTMLCanvasElement>(null);
   const [game,setGame] = useState<Game>()
-  const [selectedTool, setSelectedTool] = useState<Tool>("rect");
+  const [selectedTool, setSelectedTool] = useState<Tool>("selection");
   const {width,height} = useWindowSize();  
   useEffect(() => {
     //@ts-ignore
