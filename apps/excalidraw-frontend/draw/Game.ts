@@ -84,6 +84,11 @@ export class Game {
     private selectedShapeUUID: string | null = null;
     // hoverSelection
     private hoveredShapeUUID: string | null = null;
+    //draggin element while selected
+    private isDraggingShape: boolean = false;
+    private draggingOffsetX: number = 0;
+    private draggingOffsetY: number = 0;
+
     constructor(canvas: HTMLCanvasElement,interactiveCanvas: HTMLCanvasElement,roomId:number,socket:WebSocket) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d')!;
@@ -137,6 +142,14 @@ export class Game {
                 }
                 case WsMessageType.ERASE: {
                     this.existingShape =this.existingShape.filter(shape=> shape.id!=message.id)
+                    this.clearCanvas();
+                }
+                case WsMessageType.UPDATE: {
+                    const parsedShape = JSON.parse(message.message)
+                    const findIndex = this.existingShape.findIndex(s=> s.id==message.id)
+                    if (findIndex!=-1) {
+                        this.existingShape[findIndex] = parsedShape;
+                    }
                     this.clearCanvas();
                 }
                 default:
@@ -311,9 +324,21 @@ export class Game {
     mousedown = (e:MouseEvent)=>{
         if (this.selectedTool === 'selection') {
         const { x, y } = this.transformPanScale(e.clientX, e.clientY);
-        const clickedShapeUUID = this.getShapeUUIDAtPosition(x, y);
-        console.log(clickedShapeUUID);
         
+        if (this.selectedShapeUUID) {
+            const selectedShape = this.existingShape.find(s=> s.id==this.selectedShapeUUID)
+            if (selectedShape) {
+                const bound = getShapeBounds(selectedShape);
+                if(x>=bound.x && x<=(bound.x+bound.width) && y>=bound.y && y<=(bound.y+bound.height)){
+                    this.isDraggingShape =true;
+                    this.draggingOffsetX = x-bound.x
+                    this.draggingOffsetY= y-bound.y
+                    this.clearCanvas();
+                    return;
+                }
+            }
+        }
+        const clickedShapeUUID = this.getShapeUUIDAtPosition(x, y);
         this.selectedShapeUUID = clickedShapeUUID;
         this.redrawInteractionLayer();
         return; 
@@ -339,6 +364,20 @@ export class Game {
     }
 
     mouseup = (e:MouseEvent)=>{
+        if (this.isDraggingShape) {
+            this.isDraggingShape=false
+            const shape = this.existingShape.find(s => s.id === this.selectedShapeUUID);
+            if (!shape) {
+                return
+            }
+            this.socket.send(JSON.stringify({
+                type:WsMessageType.UPDATE,
+                id: shape.id,
+                message: JSON.stringify(shape),
+                roomId: this.roomId
+        }))
+            this.clearCanvas();
+        }
         this.clicked = false;
         this.isDragging = false;
         const {x ,y} = this.transformPanScale(e.clientX,e.clientY)
@@ -420,6 +459,18 @@ export class Game {
 
     mousemove = (e:MouseEvent)=>{
         const {x ,y} = this.transformPanScale(e.clientX,e.clientY)
+        if (this.isDraggingShape && this.selectedShapeUUID) {
+            const selectedShape = this.existingShape.find(s => s.id === this.selectedShapeUUID);
+            if (!selectedShape) return;
+            const newX = x - this.draggingOffsetX;
+            const newY = y - this.draggingOffsetY;
+            const bounds = getShapeBounds(selectedShape);
+            const dx = newX - bounds.x;
+            const dy = newY - bounds.y;
+            translateShape(selectedShape, dx, dy);
+            this.redrawInteractionLayer();
+            return;
+        }
         if (this.clicked) {
             const width = x-this.startX
             const height = y-this.startY
@@ -604,7 +655,11 @@ export class Game {
         // this.ctx.translate(this.offsetX,this.offsetY);
         // this.ctx.scale(this.zoomlevel, this.zoomlevel);
         this.existingShape.map(shape=>{
-            drawShape(shape,this.ctx)
+            if (this.isDraggingShape && shape.id==this.selectedShapeUUID) {
+            }else{
+                drawShape(shape,this.ctx)            
+            }
+
         })
         this.ctx.restore();
     }
@@ -622,6 +677,9 @@ export class Game {
                 ctx.strokeStyle = 'rgb(30, 144, 255)';
                 // ctx.lineWidth = 2;
                 ctx.strokeRect(bounds.x-worldPadding, bounds.y-worldPadding, bounds.width+(worldPadding*2), bounds.height+(worldPadding*2));
+                if (this.isDraggingShape) {
+                    drawShape(selectedShape,this.interactionCtx)                
+                }
                 ctx.restore();
             }
         }
@@ -979,4 +1037,51 @@ function doBoxesIntersect(boxA:{
         boxA.y < boxB.y + boxB.height &&
         boxA.y + boxA.height > boxB.y
     );
+}
+
+function translateShape(shape: Shape,dx:number,dy:number) {
+    switch (shape.type) {
+        case "rect":
+            shape.x += dx;
+            shape.y += dy;
+            break;
+        case "circle":
+            shape.centerX +=dx
+            shape.centerY +=dy
+            break;
+        case "line":
+            shape.startX+=dx
+            shape.startY+=dy
+            shape.endX+=dx
+            shape.endY+=dy
+            break
+        case "arrow":
+            shape.fromX+=dx
+            shape.fromY+=dy
+            shape.toX+=dx
+            shape.toY+=dy
+            break
+        case "pencil":
+            shape.points.forEach(cord=> {
+                cord[0]+=dx
+                cord[1]+=dy
+            })
+            break;
+        case "text":
+            shape.startX+=dx
+            shape.startY+=dy
+            break;
+        case "rhombus":
+            shape.leftX+=dx
+            shape.leftY+=dy
+            shape.topX+=dx
+            shape.topY+=dy
+            shape.rightX+=dx
+            shape.rightY+=dy
+            shape.bottomX+=dx
+            shape.bottomY+=dy
+            break;
+        default:
+            break;
+    }
 }

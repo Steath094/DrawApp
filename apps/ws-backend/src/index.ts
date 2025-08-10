@@ -125,8 +125,32 @@ wss.on('connection', function connection(ws,req) {
               }))
             });
           })
+          break;
         }
-        break;
+        case WsMessageType.UPDATE: {
+          const shapeId = parsedData.id;
+          const roomId = parsedData.roomId;
+          const message = parsedData.message;
+          await prismaClient.shape.update({
+            where: {
+              id: shapeId
+            },
+            data: {
+              message: message
+            }
+          })
+          rooms.get(roomId)?.forEach(id=>{
+            userSockets.get(id)?.forEach(ws => {
+              ws.send(JSON.stringify({
+                type: WsMessageType.UPDATE,
+                id :shapeId,
+                message,
+                roomId
+              }))
+            });
+          })
+          break;
+        }
       }
   });
   ws.on('close', () => {
