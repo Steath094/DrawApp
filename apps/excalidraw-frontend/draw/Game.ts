@@ -4,6 +4,7 @@ import getStroke from "perfect-freehand";
 import { getSvgPathFromStroke, calculateRoundedCornerRadius } from "./Util";
 import { SELECTION_PADDING_PX, SELECTION_TOLERENCE_PX, TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_WIDTH } from "./constants";
 import { v4 as uuidv4 } from "uuid";
+import {WsMessageType} from "./constants"
 type Shape = {
     id: string | null,
     type: "rect",
@@ -108,6 +109,9 @@ export class Game {
         this.interactiveCanvas.removeEventListener("mousemove",this.mousemove)
 
         this.interactiveCanvas.removeEventListener("wheel",this.mousewheel)
+
+        document.removeEventListener("keydown",this.keyDown)
+
     }
     setTool(tool:Tool){
         this.selectedShapeUUID = null;
@@ -120,11 +124,20 @@ export class Game {
     }
     initHandlers(){
         this.socket.onmessage = (event) => {
-        const message = JSON.parse(event.data);
-        if (message.type=="chat") {
-            const parsedShape = JSON.parse(message.message)
-            this.existingShape.push(parsedShape)
-            this.clearCanvas()
+            const message = JSON.parse(event.data);
+            switch (message.type) {
+                case WsMessageType.DRAW:{
+                    const parsedShape = JSON.parse(message.message)
+                    this.existingShape.push(parsedShape)
+                    this.clearCanvas()
+                    break;
+                }
+                case WsMessageType.ERASE: {
+                    this.existingShape =this.existingShape.filter(shape=> shape.id!=message.id)
+                    this.clearCanvas();
+                }
+                default:
+                    break;
             }
         }
     }
@@ -254,7 +267,8 @@ export class Game {
             }
             this.existingShape.push(shape);
             this.socket.send(JSON.stringify({
-                type: "chat",
+                type: WsMessageType.DRAW,
+                id: shape.id,
                 message: JSON.stringify(shape),
                 roomId: this.roomId
             }))
@@ -395,7 +409,8 @@ export class Game {
         this.existingShape.push(shape)
         this.clearCanvas();
         this.socket.send(JSON.stringify({
-                type: "chat",
+                type:WsMessageType.DRAW,
+                id: shape.id,
                 message: JSON.stringify(shape),
                 roomId: this.roomId
         }))
@@ -526,6 +541,31 @@ export class Game {
         this.clearCanvas();
         this.redrawInteractionLayer();
     } 
+
+    keyDown = (e:KeyboardEvent)=>{
+        if (this.selectedShapeUUID === null) {
+            return;
+        }
+        if (e.key=='Delete') {
+            const activeEl = document.activeElement;
+            if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
+                return;
+            }
+            e.preventDefault();
+            const indexToRemove = this.existingShape.findIndex(shape => shape.id === this.selectedShapeUUID);
+            if (indexToRemove!=-1) {
+                this.existingShape.splice(indexToRemove,1);
+                this.socket.send(JSON.stringify({
+                    type: WsMessageType.ERASE,
+                    id: this.selectedShapeUUID,
+                    roomId: this.roomId
+                }))
+            }
+            this.clearCanvas();
+            this.redrawInteractionLayer();
+        }
+    }
+
     initMouseHandlers(){
         this.interactiveCanvas.addEventListener("mousedown",this.mousedown)
 
@@ -534,6 +574,8 @@ export class Game {
         this.interactiveCanvas.addEventListener("mousemove",this.mousemove)
 
         this.interactiveCanvas.addEventListener("wheel", this.mousewheel)
+
+        document.addEventListener("keydown",this.keyDown)
     }
     transformPanScale(
     clientX: number,

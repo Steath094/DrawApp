@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useEffect } from "react";
 import { useRef } from "react"
 import Canvas from "./Canvas";
+import { WsMessageType } from "@/draw/constants";
 
 export function RoomCanvas({roomId}:{roomId:number}){
     const [socket,setSocket] = useState<WebSocket | null>(null);
@@ -13,7 +14,7 @@ export function RoomCanvas({roomId}:{roomId:number}){
         ws.onopen= ()=>{
             setSocket(ws)
             ws.send(JSON.stringify({
-                type: "join_room",
+                type: WsMessageType.JOIN,
                 roomId
             }))
         }

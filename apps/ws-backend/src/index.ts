@@ -4,6 +4,13 @@ import {prismaClient} from "@repo/db/client";
 import {JWT_SECRET} from '@repo/backend-common/config'
 const wss = new WebSocketServer({ port: 8080 });
 
+enum WsMessageType {
+        JOIN = "JOIN_ROOM",
+        LEAVE = "LEAVE_ROOM",
+        DRAW = "DRAW_SHAPE",
+        ERASE = "ERASE",
+        UPDATE = "UPDATE"
+}
 function checkUser(token:string): string | null {
     try {
       const decoded = jwt.verify(token,JWT_SECRET as string
@@ -49,36 +56,37 @@ wss.on('connection', function connection(ws,req) {
     
       const parsedData = JSON.parse(data as unknown as string);
       const roomId = parsedData.roomId;
-      if (parsedData.type == "join_room") {
-        //store in local state
-        const user = users.get(userId);
-        
-        if (!rooms.has(roomId)) {
+      switch(parsedData.type) {
+        case WsMessageType.JOIN : {
+          const user = users.get(userId);
           
-          rooms.set(roomId,new Set<string>);
+          if (!rooms.has(roomId)) {
+            
+            rooms.set(roomId,new Set<string>);
+          }
+          rooms.get(roomId)?.add(userId);
+          user?.add(roomId);
+          break;
         }
-        rooms.get(roomId)?.add(userId);
-        user?.add(roomId)
-      }
-      if (parsedData.type == "leave_room") {
-        //update in local state
-        const user = users.get(userId);
-        if (!user) {
-          return
+        case WsMessageType.LEAVE: {
+          const user = users.get(userId);
+          if (!user) {
+            return
+          }
+          user.delete(roomId);
+          rooms.get(roomId)?.delete(userId);
+          if (rooms.get(roomId)?.size==0) {
+            rooms.delete(roomId)
+          }
+          break;
         }
-        user.delete(roomId);
-        rooms.get(roomId)?.delete(userId);
-        if (rooms.get(roomId)?.size==0) {
-          rooms.delete(roomId)
-        }
-      }
-
-      if (parsedData.type == "chat") {
-        //update in local state
+        case WsMessageType.DRAW: {
           const roomId = parsedData.roomId;
           const message = parsedData.message;
-          await prismaClient.chat.create({
+          const shapeId = parsedData.id;
+          await prismaClient.shape.create({
             data:{
+              id :shapeId,
               roomId,
               message,
               userId
@@ -88,12 +96,32 @@ wss.on('connection', function connection(ws,req) {
           rooms.get(roomId)?.forEach(id=>{
             userSockets.get(id)?.forEach(ws => {
               ws.send(JSON.stringify({
-                type: "chat",
+                type: WsMessageType.DRAW,
+                id :shapeId,
                 message: message,
                 roomId
               }))
             });
           })
+        }
+        case WsMessageType.ERASE: {
+          const shapeId = parsedData.id;
+          const roomId = parsedData.roomId;
+          await prismaClient.shape.delete({
+            where: {
+              id: shapeId
+            }
+          })
+          rooms.get(roomId)?.forEach(id=>{
+            userSockets.get(id)?.forEach(ws => {
+              ws.send(JSON.stringify({
+                type: WsMessageType.ERASE,
+                id :shapeId,
+                roomId
+              }))
+            });
+          })
+        }
       }
   });
   ws.on('close', () => {
