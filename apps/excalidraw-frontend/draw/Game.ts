@@ -116,7 +116,10 @@ export class Game {
     setTool(tool:Tool){
         this.selectedShapeUUID = null;
         this.selectedTool= tool;
-        // this.redrawInteractionLayer();
+        if (this.selectedTool!="selection" && this.selectedTool!='pan') {
+            this.interactiveCanvas.style.cursor = 'crosshair';
+        }
+        this.redrawInteractionLayer();
     }
     async init(){
         this.existingShape = await getExistingShapes(this.roomId);
@@ -405,7 +408,6 @@ export class Game {
             }
         }
         if(!shape) return
-        
         this.existingShape.push(shape)
         this.clearCanvas();
         this.socket.send(JSON.stringify({
@@ -505,7 +507,7 @@ export class Game {
 
             this.clearCanvas();
         }
-        if (!this.clicked && !this.isDragging) {
+        if (!this.clicked && !this.isDragging && this.selectedTool=='selection') {
         const { x, y } = this.transformPanScale(e.clientX, e.clientY);
         const foundUUID = this.getShapeUUIDAtPosition(x, y);
             if (foundUUID !== this.hoveredShapeUUID) {

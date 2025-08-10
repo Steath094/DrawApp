@@ -81,10 +81,12 @@ wss.on('connection', function connection(ws,req) {
           break;
         }
         case WsMessageType.DRAW: {
+          console.log("working");
+                    
           const roomId = parsedData.roomId;
           const message = parsedData.message;
           const shapeId = parsedData.id;
-          await prismaClient.shape.create({
+          const res = await prismaClient.shape.create({
             data:{
               id :shapeId,
               roomId,
@@ -92,6 +94,7 @@ wss.on('connection', function connection(ws,req) {
               userId
             }
           })
+          console.log(res);
           
           rooms.get(roomId)?.forEach(id=>{
             userSockets.get(id)?.forEach(ws => {
@@ -103,6 +106,7 @@ wss.on('connection', function connection(ws,req) {
               }))
             });
           })
+          break;
         }
         case WsMessageType.ERASE: {
           const shapeId = parsedData.id;
@@ -122,6 +126,7 @@ wss.on('connection', function connection(ws,req) {
             });
           })
         }
+        break;
       }
   });
   ws.on('close', () => {

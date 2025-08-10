@@ -71,8 +71,8 @@ export function ToolBar({
   setSelectedTool: (s: Tool) => void;
 }) {
   return (
-    <div className="fixed top-2.5 left-10 flex gap-2 bg-[#232329] p-2 rounded-md z-30">
-      <IconButton
+    <div className="fixed top-2.5 left-10 flex gap-2 bg-[#232329]  p-2 rounded-md z-30 [&>*]:cursor-pointer">
+      <IconButton 
         activated={selectedTool == "pan"}
         icon={<Hand/>}
         onClick={() => {
