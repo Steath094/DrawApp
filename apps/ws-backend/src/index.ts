@@ -9,7 +9,9 @@ enum WsMessageType {
         LEAVE = "LEAVE_ROOM",
         DRAW = "DRAW_SHAPE",
         ERASE = "ERASE",
-        UPDATE = "UPDATE"
+        UPDATE = "UPDATE",
+        SHAPE_DRAGGING = "SHAPE_DRAG_UPDATE",
+        SHAPE_DRAWING = "SHAPE_DRAW_UPDATE"
 }
 function checkUser(token:string): string | null {
     try {
@@ -143,6 +145,23 @@ wss.on('connection', function connection(ws,req) {
             userSockets.get(id)?.forEach(ws => {
               ws.send(JSON.stringify({
                 type: WsMessageType.UPDATE,
+                id :shapeId,
+                message,
+                roomId
+              }))
+            });
+          })
+          break;
+        }
+        case WsMessageType.SHAPE_DRAWING:
+        case WsMessageType.SHAPE_DRAGGING: {
+          const shapeId = parsedData.id;
+          const roomId = parsedData.roomId;
+          const message = parsedData.message;
+          rooms.get(roomId)?.forEach(id=>{
+            userSockets.get(id)?.forEach(ws => {
+              ws.send(JSON.stringify({
+                type: parsedData.type,
                 id :shapeId,
                 message,
                 roomId

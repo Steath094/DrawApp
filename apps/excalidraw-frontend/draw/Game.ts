@@ -5,6 +5,7 @@ import { getSvgPathFromStroke, calculateRoundedCornerRadius } from "./Util";
 import { SELECTION_PADDING_PX, SELECTION_TOLERENCE_PX, TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_WIDTH } from "./constants";
 import { v4 as uuidv4 } from "uuid";
 import {WsMessageType} from "./constants"
+import { throttle } from 'lodash';
 type Shape = {
     id: string | null,
     type: "rect",
@@ -88,7 +89,11 @@ export class Game {
     private isDraggingShape: boolean = false;
     private draggingOffsetX: number = 0;
     private draggingOffsetY: number = 0;
-
+    //throttled function for sending updates
+    private throttledSendDraggingUpdate: (shape:Shape)=> void;
+    private throttledSendDrawingUpdate: (shape:Shape)=> void;
+    private remotePreviews: Map<string, Shape> = new Map();
+    private drawingShapeId: string | null = null;
     constructor(canvas: HTMLCanvasElement,interactiveCanvas: HTMLCanvasElement,roomId:number,socket:WebSocket) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d')!;
@@ -105,6 +110,19 @@ export class Game {
         this.init();
         this.initHandlers()
         this.initMouseHandlers()
+        //throttled functions
+        const sendDragUpdate = (shape: Shape) => {
+            this.socket.send(JSON.stringify({ type: WsMessageType.SHAPE_DRAGGING,message:JSON.stringify(shape),roomId,id:shape.id }));
+        };
+        
+        // creates a throttled version of it that only fires every 100ms.
+        this.throttledSendDraggingUpdate = throttle(sendDragUpdate, 100);
+
+        // Doing same for drawing a new shape
+        const sendDrawUpdate = (shape: Shape) => {
+            this.socket.send(JSON.stringify({ type: WsMessageType.SHAPE_DRAWING, message:JSON.stringify(shape),roomId,id:shape.id }));
+        };
+        this.throttledSendDrawingUpdate = throttle(sendDrawUpdate, 100);
     }
     destroy(){
         this.interactiveCanvas.removeEventListener("mousedown",this.mousedown)
@@ -128,6 +146,8 @@ export class Game {
     }
     async init(){
         this.existingShape = await getExistingShapes(this.roomId);
+        console.log(this.existingShape);
+        
         this.clearCanvas();
     }
     initHandlers(){
@@ -143,14 +163,28 @@ export class Game {
                 case WsMessageType.ERASE: {
                     this.existingShape =this.existingShape.filter(shape=> shape.id!=message.id)
                     this.clearCanvas();
+                    break;
                 }
                 case WsMessageType.UPDATE: {
                     const parsedShape = JSON.parse(message.message)
                     const findIndex = this.existingShape.findIndex(s=> s.id==message.id)
+                    console.log(this.existingShape);
                     if (findIndex!=-1) {
+                        console.log(findIndex);                        
                         this.existingShape[findIndex] = parsedShape;
+                        console.log(this.existingShape);
                     }
                     this.clearCanvas();
+                    break;
+                }
+                case WsMessageType.SHAPE_DRAGGING:
+                case WsMessageType.SHAPE_DRAWING: {
+                    console.log(message);
+                      
+                    const parsedShape = JSON.parse(message.message)
+                    this.remotePreviews.set(parsedShape.id, parsedShape);
+                    this.redrawInteractionLayer();
+                    break;
                 }
                 default:
                     break;
@@ -347,6 +381,7 @@ export class Game {
         const {x,y} = this.transformPanScale(e.clientX,e.clientY)
         this.startX = x;
         this.startY = y;
+        this.drawingShapeId = uuidv4();
         if (this.selectedTool=="pan") {
             this.isDragging=true;
             this.clicked=false
@@ -377,8 +412,10 @@ export class Game {
                 roomId: this.roomId
         }))
             this.clearCanvas();
+            return;
         }
         this.clicked = false;
+        this.drawingShapeId = null;
         this.isDragging = false;
         const {x ,y} = this.transformPanScale(e.clientX,e.clientY)
         // const width = e.clientX-this.startX
@@ -468,6 +505,7 @@ export class Game {
             const dx = newX - bounds.x;
             const dy = newY - bounds.y;
             translateShape(selectedShape, dx, dy);
+            this.throttledSendDraggingUpdate(selectedShape);
             this.redrawInteractionLayer();
             return;
         }
@@ -476,7 +514,7 @@ export class Game {
             const height = y-this.startY
             this.clearCanvas();
             this.ctx.save();
-        this.ctx.setTransform(this.zoomlevel, 0, 0, this.zoomlevel, this.offsetX, this.offsetY);
+            this.ctx.setTransform(this.zoomlevel, 0, 0, this.zoomlevel, this.offsetX, this.offsetY);
             this.ctx.strokeStyle= 'rgba(255,255,255)'
             const selectedTool:Tool = this.selectedTool!;
             console.log("selectedTool",selectedTool);
@@ -545,6 +583,8 @@ export class Game {
             }
             if (shape) {
                 drawShape(shape,this.ctx);
+                shape.id=this.drawingShapeId
+                this.throttledSendDrawingUpdate(shape as Shape);
             }
             this.ctx.restore();
         }
@@ -667,15 +707,22 @@ export class Game {
         const ctx = this.interactionCtx; 
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, this.interactiveCanvas.width, this.interactiveCanvas.height);
+
+        ctx.save();
+        ctx.setTransform(this.zoomlevel, 0, 0, this.zoomlevel, this.offsetX, this.offsetY);
+
+        for (const shape of this.remotePreviews.values()) {
+            if (shape.id !== this.selectedShapeUUID) {
+                drawShape(shape, ctx);
+            }
+        }
         if (this.selectedShapeUUID) {
             const selectedShape = this.existingShape.find(s => s.id === this.selectedShapeUUID);
             if (selectedShape) {
                 const bounds = getShapeBounds(selectedShape);
                 const worldPadding = SELECTION_PADDING_PX / this.zoomlevel;
-                ctx.save();
-                ctx.setTransform(this.zoomlevel, 0, 0, this.zoomlevel, this.offsetX, this.offsetY);
                 ctx.strokeStyle = 'rgb(30, 144, 255)';
-                // ctx.lineWidth = 2;
+                ctx.lineWidth = 2;
                 ctx.strokeRect(bounds.x-worldPadding, bounds.y-worldPadding, bounds.width+(worldPadding*2), bounds.height+(worldPadding*2));
                 if (this.isDraggingShape) {
                     drawShape(selectedShape,this.interactionCtx)                
@@ -736,8 +783,10 @@ export class Game {
     }
 }
 function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
-    if (shape.type=='rect') {
-        ctx.strokeStyle= 'rgba(255,255,255)'      
+    ctx.strokeStyle = 'rgba(255, 255, 255)';
+    ctx.lineWidth = 2;
+    ctx.fillStyle = 'rgba(255, 255, 255)';
+    if (shape.type=='rect') {     
         ctx.beginPath()
         ctx.roundRect(shape.x,shape.y,shape.width,shape.height,calculateRoundedCornerRadius(Math.min(shape.width,shape.height)))
         ctx.stroke();

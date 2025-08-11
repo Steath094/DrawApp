@@ -7,5 +7,7 @@ export enum WsMessageType {
     LEAVE = "LEAVE_ROOM",
     DRAW = "DRAW_SHAPE",
     ERASE = "ERASE",
-    UPDATE = "UPDATE"
+    UPDATE = "UPDATE",
+    SHAPE_DRAGGING = "SHAPE_DRAG_UPDATE",
+    SHAPE_DRAWING = "SHAPE_DRAW_UPDATE"
 }
