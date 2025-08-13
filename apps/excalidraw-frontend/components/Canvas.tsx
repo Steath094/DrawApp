@@ -47,7 +47,7 @@ export default function Canvas({
       <canvas
         id="static-canvas"
         ref={canvasRef}
-        className="absolute top-0 left-0 border-2 border-black bg-black z-10"
+        className="absolute top-0 left-0 border-2 border-black bg-[#121212] z-10"
         height={width}
         width={height}
       ></canvas>

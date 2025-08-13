@@ -2,7 +2,7 @@ import { Tool } from "@/components/Canvas";
 import { getExistingShapes } from "./http";
 import getStroke from "perfect-freehand";
 import { getSvgPathFromStroke, calculateRoundedCornerRadius } from "./Util";
-import { SELECTION_PADDING_PX, SELECTION_TOLERENCE_PX, TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_WIDTH } from "./constants";
+import { HANDLE_SIZE_PX, SELECTION_PADDING_PX, SELECTION_TOLERENCE_PX, TEXT_ADJUSTED_HEIGHT, TEXT_ADJUSTED_WIDTH } from "./constants";
 import { v4 as uuidv4 } from "uuid";
 import {WsMessageType} from "./constants"
 import { throttle } from 'lodash';
@@ -58,7 +58,7 @@ type Shape = {
     width:number,
     height:number
 }
-
+type HandleType = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top' | 'bottom' | 'left' | 'right';
 export class Game {
     private canvas:HTMLCanvasElement;
     private ctx:CanvasRenderingContext2D;
@@ -94,6 +94,10 @@ export class Game {
     private throttledSendDrawingUpdate: (shape:Shape)=> void;
     private remotePreviews: Map<string, Shape> = new Map();
     private drawingShapeId: string | null = null;
+    //resizing
+    private activeHandle: HandleType | null = null; //( current side of resize handlers)
+    //intial clicks to be detected here
+    private resizeInitialBounds: { x: number, y: number, width: number, height: number } | null = null;
     constructor(canvas: HTMLCanvasElement,interactiveCanvas: HTMLCanvasElement,roomId:number,socket:WebSocket) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d')!;
@@ -177,15 +181,15 @@ export class Game {
                     this.clearCanvas();
                     break;
                 }
-                case WsMessageType.SHAPE_DRAGGING:
-                case WsMessageType.SHAPE_DRAWING: {
-                    console.log(message);
+                // case WsMessageType.SHAPE_DRAWING:
+                // case WsMessageType.SHAPE_DRAGGING: {
+                //     console.log(message);
                       
-                    const parsedShape = JSON.parse(message.message)
-                    this.remotePreviews.set(parsedShape.id, parsedShape);
-                    this.redrawInteractionLayer();
-                    break;
-                }
+                //     const parsedShape = JSON.parse(message.message)
+                //     this.remotePreviews.set(parsedShape.id, parsedShape);
+                //     this.redrawInteractionLayer();
+                //     break;
+                // }
                 default:
                     break;
             }
@@ -360,11 +364,20 @@ export class Game {
         const { x, y } = this.transformPanScale(e.clientX, e.clientY);
         
         if (this.selectedShapeUUID) {
+            const handle = this.getHandleAtPosition(x,y);
+            if (handle) {
+                this.isDraggingShape=false;
+                this.activeHandle=handle
+                const shape = this.existingShape.find(s => s.id === this.selectedShapeUUID)!;
+                this.resizeInitialBounds = getShapeBounds(shape);
+                return;
+            }
             const selectedShape = this.existingShape.find(s=> s.id==this.selectedShapeUUID)
             if (selectedShape) {
                 const bound = getShapeBounds(selectedShape);
                 if(x>=bound.x && x<=(bound.x+bound.width) && y>=bound.y && y<=(bound.y+bound.height)){
                     this.isDraggingShape =true;
+                    this.activeHandle=null;
                     this.draggingOffsetX = x-bound.x
                     this.draggingOffsetY= y-bound.y
                     this.clearCanvas();
@@ -374,6 +387,9 @@ export class Game {
         }
         const clickedShapeUUID = this.getShapeUUIDAtPosition(x, y);
         this.selectedShapeUUID = clickedShapeUUID;
+        if (!clickedShapeUUID) {
+            this.selectedShapeUUID=null;
+        }
         this.redrawInteractionLayer();
         return; 
     }
@@ -399,6 +415,11 @@ export class Game {
     }
 
     mouseup = (e:MouseEvent)=>{
+        if (this.activeHandle) {
+            this.activeHandle=null;
+            this.resizeInitialBounds=null;
+            this.clearCanvas();
+        }
         if (this.isDraggingShape) {
             this.isDraggingShape=false
             const shape = this.existingShape.find(s => s.id === this.selectedShapeUUID);
@@ -496,6 +517,16 @@ export class Game {
 
     mousemove = (e:MouseEvent)=>{
         const {x ,y} = this.transformPanScale(e.clientX,e.clientY)
+        if (this.activeHandle && this.selectedShapeUUID && this.resizeInitialBounds) {
+            const shape = this.existingShape.find(s => s.id === this.selectedShapeUUID);
+            if (!shape) {
+                return
+            }
+            this.resizeShape(shape,this.activeHandle,x,y,this.resizeInitialBounds)
+            this.clearCanvas();
+            this.redrawInteractionLayer();
+            return;
+        }
         if (this.isDraggingShape && this.selectedShapeUUID) {
             const selectedShape = this.existingShape.find(s => s.id === this.selectedShapeUUID);
             if (!selectedShape) return;
@@ -722,14 +753,29 @@ export class Game {
                 const bounds = getShapeBounds(selectedShape);
                 const worldPadding = SELECTION_PADDING_PX / this.zoomlevel;
                 ctx.strokeStyle = 'rgb(30, 144, 255)';
-                ctx.lineWidth = 2;
+                ctx.lineWidth = 2/this.zoomlevel;;
                 ctx.strokeRect(bounds.x-worldPadding, bounds.y-worldPadding, bounds.width+(worldPadding*2), bounds.height+(worldPadding*2));
                 if (this.isDraggingShape) {
                     drawShape(selectedShape,this.interactionCtx)                
                 }
-                ctx.restore();
+                const handleSizeWorld = HANDLE_SIZE_PX / this.zoomlevel;
+                ctx.fillStyle = 'rgb(30, 144, 255)';
+                if (selectedShape.type!='pencil') {
+                    const handles = this.getHandlePositions(bounds);
+                    for (const handle of Object.values(handles)) {
+                        ctx.fillRect(
+                            handle.x - handleSizeWorld / 2,
+                            handle.y - handleSizeWorld / 2,
+                            handleSizeWorld,
+                            handleSizeWorld
+                        );
+                    } 
+                }
             }
+            
         }
+        ctx.restore();
+
     }
     private getShapeUUIDAtPosition(clickX: number, clickY: number): string | null {
         const worldTolerance = SELECTION_TOLERENCE_PX / this.zoomlevel;
@@ -780,6 +826,137 @@ export class Game {
         }
 
         return null;
+    }
+    private getHandlePositions(bounds: { x: number, y: number, width: number, height: number }) {
+        const selectionTolerance = (SELECTION_TOLERENCE_PX)/this.zoomlevel
+        return {
+            'top-left':     { x: bounds.x - selectionTolerance, y:bounds.y - selectionTolerance },
+            'top-right':    { x: bounds.x + selectionTolerance + bounds.width, y: bounds.y - selectionTolerance },
+            'bottom-left':  { x: bounds.x - selectionTolerance, y: bounds.y + bounds.height + selectionTolerance },
+            'bottom-right': { x: bounds.x + bounds.width + selectionTolerance, y: bounds.y + bounds.height + selectionTolerance },
+            'top':          { x: bounds.x - selectionTolerance + bounds.width / 2, y: bounds.y - selectionTolerance },
+            'bottom':       { x: bounds.x - selectionTolerance + bounds.width / 2, y: bounds.y + bounds.height + selectionTolerance },
+            'left':         { x: bounds.x - selectionTolerance, y: bounds.y - selectionTolerance + bounds.height / 2 },
+            'right':        { x: bounds.x + selectionTolerance + bounds.width, y: bounds.y - selectionTolerance + bounds.height / 2 },
+        };
+    }
+    private getHandleAtPosition(worldX: number, worldY: number): HandleType | null {
+        if (!this.selectedShapeUUID) return null;
+        const shape = this.existingShape.find(s => s.id === this.selectedShapeUUID);
+        if (!shape) return null;
+
+        const bounds = getShapeBounds(shape);
+        const handles = this.getHandlePositions(bounds);
+        const handleSizeWorld = HANDLE_SIZE_PX / this.zoomlevel;
+        for (const [type, pos] of Object.entries(handles)) {
+            if (
+                worldX >= pos.x - handleSizeWorld / 2 && worldX <= pos.x + handleSizeWorld / 2 &&
+                worldY >= pos.y - handleSizeWorld / 2 && worldY <= pos.y + handleSizeWorld / 2
+            ) {
+                return type as HandleType;
+            }
+        }
+        return null;
+    }
+    private resizeShape(
+    shape: Shape,
+    handle: HandleType,
+    mouseX: number,
+    mouseY: number,
+    initialBounds: { x: number; y: number; width: number; height: number }
+    ) {
+        let newBounds = { ...initialBounds };
+        switch (handle) {
+            case 'bottom-right':
+                newBounds.width = mouseX - initialBounds.x;
+                newBounds.height = mouseY - initialBounds.y;
+                break;
+            case 'top-left':
+                newBounds.width = (initialBounds.x + initialBounds.width) - mouseX;
+                newBounds.height = (initialBounds.y + initialBounds.height) - mouseY;
+                newBounds.x = mouseX;
+                newBounds.y = mouseY;
+                break;
+            case 'top-right':
+                newBounds.width = mouseX - initialBounds.x;
+                newBounds.height = (initialBounds.y + initialBounds.height) - mouseY;
+                newBounds.y = mouseY;
+                break;
+            case 'bottom-left':
+                newBounds.width = (initialBounds.x + initialBounds.width) - mouseX;
+                newBounds.height = mouseY - initialBounds.y;
+                newBounds.x = mouseX;
+                break;
+            case 'top':
+                newBounds.height = (initialBounds.y + initialBounds.height) - mouseY;
+                newBounds.y = mouseY;
+                break;
+            case 'bottom':
+                newBounds.height = mouseY - initialBounds.y;
+                break;
+            case 'left':
+                newBounds.width = (initialBounds.x + initialBounds.width) - mouseX;
+                newBounds.x = mouseX;
+                break;
+            case 'right':
+                newBounds.width = mouseX - initialBounds.x;
+                break;
+        }
+    
+        if (newBounds.width < 0) {
+            newBounds.x = newBounds.x + newBounds.width;
+            newBounds.width = Math.abs(newBounds.width);
+        }
+        if (newBounds.height < 0) {
+            newBounds.y = newBounds.y + newBounds.height;
+            newBounds.height = Math.abs(newBounds.height);
+        }
+
+        switch (shape.type) {
+            case 'rect':
+                shape.x = newBounds.x;
+                shape.y = newBounds.y;
+                shape.width = newBounds.width;
+                shape.height = newBounds.height;
+                break;
+            case 'text':
+                shape.startX = newBounds.x;
+                shape.startY = newBounds.y;
+                shape.width = newBounds.width;
+                shape.height = newBounds.height;
+                break;
+            case 'circle':
+                shape.centerX = newBounds.x + newBounds.width / 2;
+                shape.centerY = newBounds.y + newBounds.height / 2;
+                shape.radiusX = newBounds.width / 2;
+                shape.radiusY = newBounds.height / 2;
+                break;
+
+            case 'line':
+                shape.startX = newBounds.x;
+                shape.startY = newBounds.y;
+                shape.endX = newBounds.x + newBounds.width;
+                shape.endY = newBounds.y + newBounds.height;
+                break;
+                
+            case 'arrow':
+                shape.fromX = newBounds.x;
+                shape.fromY = newBounds.y;
+                shape.toX = newBounds.x + newBounds.width;
+                shape.toY = newBounds.y + newBounds.height;
+                break;
+            
+            case 'rhombus':
+                shape.topX = newBounds.x + newBounds.width / 2;
+                shape.topY = newBounds.y;
+                shape.rightX = newBounds.x + newBounds.width;
+                shape.rightY = newBounds.y + newBounds.height / 2;
+                shape.bottomX = newBounds.x + newBounds.width / 2;
+                shape.bottomY = newBounds.y + newBounds.height;
+                shape.leftX = newBounds.x;
+                shape.leftY = newBounds.y + newBounds.height / 2;
+                break;
+        }
     }
 }
 function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){

@@ -11,3 +11,4 @@ export enum WsMessageType {
     SHAPE_DRAGGING = "SHAPE_DRAG_UPDATE",
     SHAPE_DRAWING = "SHAPE_DRAW_UPDATE"
 }
+export const HANDLE_SIZE_PX = 8;
