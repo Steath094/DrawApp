@@ -386,6 +386,8 @@ export class Game {
             }
         }
         const clickedShapeUUID = this.getShapeUUIDAtPosition(x, y);
+        console.log(clickedShapeUUID);
+        
         this.selectedShapeUUID = clickedShapeUUID;
         if (!clickedShapeUUID) {
             this.selectedShapeUUID=null;
@@ -1179,19 +1181,18 @@ function getDistanceToShapeOutline(point: {x: number, y: number}, shape: Shape):
         case "circle": {
             const dx = point.x - shape.centerX;
             const dy = point.y - shape.centerY;
-
-            if (dx === 0 && dy === 0) return Math.min(shape.radiusX, shape.radiusY);
-
+            const rx = Math.abs(shape.radiusX);
+            const ry = Math.abs(shape.radiusY);
+            if (rx === 0 || ry === 0) {
+                return Infinity;
+            }
+            const value = (dx * dx) / (rx * rx) + (dy * dy) / (ry * ry);
             const angle = Math.atan2(dy, dx);
-
-            const pointOnOutline = {
-                x: shape.centerX + Math.abs(shape.radiusX) * Math.cos(angle),
-                y: shape.centerY + Math.abs(shape.radiusY) * Math.sin(angle)
-            };
-
-            const distToOutlineX = point.x - pointOnOutline.x;
-            const distToOutlineY = point.y - pointOnOutline.y;
-            return Math.sqrt(distToOutlineX * distToOutlineX + distToOutlineY * distToOutlineY);
+            const tolerance = 0.2; 
+            if (value >= (1 - tolerance) && value <= (1 + tolerance)) {
+                return 0; // It's a hit! Return 0 so it gets selected.
+            }
+            return Infinity; ;
         }
 
         case "pencil": {
