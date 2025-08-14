@@ -1,7 +1,8 @@
-import { WebSocket, WebSocketServer } from 'ws';
+import { WebSocketServer } from 'ws';
 import jwt from 'jsonwebtoken';
-import {prismaClient} from "@repo/db/client";
 import {JWT_SECRET} from '@repo/backend-common/config'
+import { RoomManager } from './RoomManager';
+import { shapeService } from './ShapeService';
 const wss = new WebSocketServer({ port: 8080 });
 
 enum WsMessageType {
@@ -30,9 +31,7 @@ function checkUser(token:string): string | null {
       return null;
     }
 }
-const users = new Map<string,Set<number>>();
-const userSockets = new Map<string, Set<WebSocket>>();
-const rooms = new Map<number, Set<string>>();
+const roomManager = new RoomManager();
 wss.on('connection', function connection(ws,req) {
   const url = req.url;
   if (!url) {
@@ -46,136 +45,54 @@ wss.on('connection', function connection(ws,req) {
     ws.close();
     return
   }
-  users.set(userId,new Set<number>)
-  if (!userSockets.has(userId)) {
-    userSockets.set(userId,new Set<WebSocket>)
-  }
-  userSockets.get(userId)?.add(ws);
-
+  
+  (ws as any).userId = userId; 
   ws.on('message',async function message(data) {
-    console.log("users: ",users);
-    console.log("rooms: ", rooms);
-    
-      const parsedData = JSON.parse(data as unknown as string);
-      const roomId = parsedData.roomId;
-      switch(parsedData.type) {
-        case WsMessageType.JOIN : {
-          const user = users.get(userId);
-          
-          if (!rooms.has(roomId)) {
-            
-            rooms.set(roomId,new Set<string>);
+      try {
+        const parsedData = JSON.parse(data as unknown as string);
+        const {type, roomId, id, message} = parsedData;
+        let broadcastMessage: string | null = null;
+        switch(type) {
+          case WsMessageType.JOIN : {
+            roomManager.joinRoom(ws,roomId);
+            break;
           }
-          rooms.get(roomId)?.add(userId);
-          user?.add(roomId);
-          break;
-        }
-        case WsMessageType.LEAVE: {
-          const user = users.get(userId);
-          if (!user) {
-            return
+          case WsMessageType.LEAVE: {
+            roomManager.leaveRoom(ws);
+            break;
           }
-          user.delete(roomId);
-          rooms.get(roomId)?.delete(userId);
-          if (rooms.get(roomId)?.size==0) {
-            rooms.delete(roomId)
+          case WsMessageType.DRAW: {
+            await shapeService.createShape(id,roomId,message,(ws as any).userId)
+            broadcastMessage = data.toString();
+            break;
           }
-          break;
+          case WsMessageType.ERASE: {
+            await shapeService.deleteShape(id);
+            broadcastMessage = data.toString();
+            break;
+          }
+          case WsMessageType.UPDATE: {
+            await shapeService.updateShape(id,message)
+            broadcastMessage=data.toString();
+            break;
+          }
+          case WsMessageType.SHAPE_DRAWING:
+          case WsMessageType.SHAPE_DRAGGING: {
+            broadcastMessage = data.toString();
+            break;
+          }
         }
-        case WsMessageType.DRAW: {
-          console.log("working");
-                    
-          const roomId = parsedData.roomId;
-          const message = parsedData.message;
-          const shapeId = parsedData.id;
-          const res = await prismaClient.shape.create({
-            data:{
-              id :shapeId,
-              roomId,
-              message,
-              userId
-            }
-          })
-          console.log(res);
-          
-          rooms.get(roomId)?.forEach(id=>{
-            userSockets.get(id)?.forEach(ws => {
-              ws.send(JSON.stringify({
-                type: WsMessageType.DRAW,
-                id :shapeId,
-                message: message,
-                roomId
-              }))
-            });
-          })
-          break;
+        if (broadcastMessage) {
+          roomManager.broadcast(ws, broadcastMessage);
         }
-        case WsMessageType.ERASE: {
-          const shapeId = parsedData.id;
-          const roomId = parsedData.roomId;
-          await prismaClient.shape.delete({
-            where: {
-              id: shapeId
-            }
-          })
-          rooms.get(roomId)?.forEach(id=>{
-            userSockets.get(id)?.forEach(ws => {
-              ws.send(JSON.stringify({
-                type: WsMessageType.ERASE,
-                id :shapeId,
-                roomId
-              }))
-            });
-          })
-          break;
-        }
-        case WsMessageType.UPDATE: {
-          const shapeId = parsedData.id;
-          const roomId = parsedData.roomId;
-          const message = parsedData.message;
-          await prismaClient.shape.update({
-            where: {
-              id: shapeId
-            },
-            data: {
-              message: message
-            }
-          })
-          rooms.get(roomId)?.forEach(id=>{
-            userSockets.get(id)?.forEach(ws => {
-              ws.send(JSON.stringify({
-                type: WsMessageType.UPDATE,
-                id :shapeId,
-                message,
-                roomId
-              }))
-            });
-          })
-          break;
-        }
-        case WsMessageType.SHAPE_DRAWING:
-        case WsMessageType.SHAPE_DRAGGING: {
-          const shapeId = parsedData.id;
-          const roomId = parsedData.roomId;
-          const message = parsedData.message;
-          rooms.get(roomId)?.forEach(id=>{
-            userSockets.get(id)?.forEach(ws => {
-              ws.send(JSON.stringify({
-                type: parsedData.type,
-                id :shapeId,
-                message,
-                roomId
-              }))
-            });
-          })
-          break;
-        }
+      } catch (error) {
+        console.error("Failed to process message:", error);
       }
+
+
   });
   ws.on('close', () => {
-    userSockets.get(userId)?.delete(ws);
-    if (userSockets.get(userId)?.size==0) {
-      userSockets.delete(userId);
-    }
+    roomManager.leaveRoom(ws);
+  });
 });
-});
+console.log("WebSocket server started on port 8080");
