@@ -140,6 +140,7 @@ export class Game {
         document.removeEventListener("keydown",this.keyDown)
 
     }
+    
     setTool(tool:Tool){
         this.selectedShapeUUID = null;
         this.selectedTool= tool;
@@ -149,9 +150,14 @@ export class Game {
         this.redrawInteractionLayer();
     }
     async init(){
+        const cachedShape = this.loadStateFromLocalStorage();
+        if (cachedShape) {
+            this.existingShape = cachedShape;
+            this.clearCanvas();
+        }
         this.existingShape = await getExistingShapes(this.roomId);
         console.log(this.existingShape);
-        
+        this.saveStateToLocalStorage();
         this.clearCanvas();
     }
     initHandlers(){
@@ -193,8 +199,33 @@ export class Game {
                 default:
                     break;
             }
+            this.saveStateToLocalStorage()
         }
     }
+    private getStorageKey(): string {
+        return `canvas-room-${this.roomId}`;
+    }
+    private saveStateToLocalStorage() {
+        try {
+            const storageKey = this.getStorageKey();
+            const shapesToSave = JSON.stringify(this.existingShape);
+            localStorage.setItem(storageKey, shapesToSave);
+        } catch (error) {
+            console.error("Failed to save state to local storage:", error);
+        }
+    }
+    private loadStateFromLocalStorage(): Shape[] | null {
+        try {
+            const storageKey = this.getStorageKey();
+            const savedShapes = localStorage.getItem(storageKey);
+            if (savedShapes) {
+                return JSON.parse(savedShapes);
+            }
+        } catch (error) {
+            console.error("Failed to load state from local storage:", error);
+        }
+        return null;
+    }   
     private handleText(e:MouseEvent){
         const { x, y } = this.transformPanScale(e.clientX, e.clientY);
         console.log("worked");
@@ -320,6 +351,7 @@ export class Game {
                 width: textarea.offsetWidth
             }
             this.existingShape.push(shape);
+            this.saveStateToLocalStorage()
             this.socket.send(JSON.stringify({
                 type: WsMessageType.DRAW,
                 id: shape.id,
@@ -418,9 +450,21 @@ export class Game {
 
     mouseup = (e:MouseEvent)=>{
         if (this.activeHandle) {
+            this.saveStateToLocalStorage();
+            const resizedShape = this.existingShape.find(s => s.id === this.selectedShapeUUID);
+            if (resizedShape) {
+                this.socket.send(JSON.stringify({
+                    type: WsMessageType.UPDATE,
+                    id: resizedShape.id,
+                    message: JSON.stringify(resizedShape),
+                    roomId: this.roomId
+                }));
+            }
             this.activeHandle=null;
             this.resizeInitialBounds=null;
             this.clearCanvas();
+            this.redrawInteractionLayer();
+            return;
         }
         if (this.isDraggingShape) {
             this.isDraggingShape=false
@@ -428,12 +472,13 @@ export class Game {
             if (!shape) {
                 return
             }
+            this.saveStateToLocalStorage()
             this.socket.send(JSON.stringify({
                 type:WsMessageType.UPDATE,
                 id: shape.id,
                 message: JSON.stringify(shape),
                 roomId: this.roomId
-        }))
+            }))
             this.clearCanvas();
             return;
         }
@@ -508,6 +553,7 @@ export class Game {
         }
         if(!shape) return
         this.existingShape.push(shape)
+        this.saveStateToLocalStorage()
         this.clearCanvas();
         this.socket.send(JSON.stringify({
                 type:WsMessageType.DRAW,
@@ -981,11 +1027,12 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         ctx.lineTo(shape.endX,shape.endY); 
         ctx.stroke(); 
     }else if(shape.type=="rhombus"){
+        console.log("s",shape);
+        
         ctx.beginPath();
         //plain rhombus
         ctx.moveTo(shape.topX,shape.topY)
         ctx.lineTo(shape.rightX,shape.rightY)
-        ctx.moveTo(shape.rightX,shape.rightY)
         ctx.lineTo(shape.bottomX,shape.bottomY);
         ctx.lineTo(shape.leftX, shape.leftY);
         ctx.lineTo(shape.topX,shape.topY)

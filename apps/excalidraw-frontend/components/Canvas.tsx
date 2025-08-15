@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useRef } from "react";
 import IconButton from "./IconButton";
 import { ArrowUpRight, Circle, Diamond, Hand, LetterTextIcon, MousePointer, PencilIcon, RectangleHorizontal } from "lucide-react";
-import { Game } from "@/draw/Game";
+import { Game } from "@/canvasGraphics/Game";
 import LineIcon from "./Icons/LineIcon";
 import { useWindowSize } from "@/customHooks/useWindowSize";
 

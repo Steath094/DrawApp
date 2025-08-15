@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useEffect } from "react";
 import { useRef } from "react"
 import Canvas from "./Canvas";
-import { WsMessageType } from "@/draw/constants";
+import { WsMessageType } from "@/canvasGraphics/constants";
 
 export function RoomCanvas({roomId}:{roomId:number}){
     const [socket,setSocket] = useState<WebSocket | null>(null);
