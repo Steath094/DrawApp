@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { Game } from "@/canvasGraphics/Game";
 import { useWindowSize } from "@/customHooks/useWindowSize";
 import { ToolBar } from "./ToolBar";
+import { ZoomBar } from "./ZoomBar";
 
 export type Tool = "lock" | "selection" | "pan" | "circle" | "rect" | "pencil" | "rhombus" | "arrow" | "line" | "text";
 export default function Canvas({
@@ -17,16 +18,15 @@ export default function Canvas({
   const interativeCanvasRef = useRef<HTMLCanvasElement>(null);
   const [game,setGame] = useState<Game>()
   const [selectedTool, setSelectedTool] = useState<Tool>("selection");
+  const [zoomLevel, setZoomLevel] = useState(1);
   const {width,height} = useWindowSize();  
   useEffect(() => {
     //@ts-ignore
     game?.setTool(selectedTool);
-    console.log(selectedTool);
-    
   }, [selectedTool,game]);
   useEffect(() => {
     if (canvasRef.current && interativeCanvasRef.current) {
-      const g = new Game(canvasRef.current,interativeCanvasRef.current,roomId,socket)
+      const g = new Game(canvasRef.current,interativeCanvasRef.current,roomId,socket,(newZoom) => setZoomLevel(newZoom))
       setGame(g);
       return () =>{
         g.destroy();
@@ -57,6 +57,7 @@ export default function Canvas({
         width={height}
       ></canvas>
       <ToolBar selectedTool={selectedTool} setSelectedTool={setSelectedTool} />
+      <ZoomBar value={Math.round(zoomLevel * 100)} setZoom={(positive) => game?.setZoom(positive)}/>
     </div>
   );
 }

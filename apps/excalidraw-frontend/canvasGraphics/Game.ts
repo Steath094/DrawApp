@@ -98,7 +98,12 @@ export class Game {
     private activeHandle: HandleType | null = null; //( current side of resize handlers)
     //intial clicks to be detected here
     private resizeInitialBounds: { x: number, y: number, width: number, height: number } | null = null;
-    constructor(canvas: HTMLCanvasElement,interactiveCanvas: HTMLCanvasElement,roomId:number,socket:WebSocket) {
+
+    //undo and redo
+    private onZoomChange: (newZoom: number) => void;
+    private undoStack: Shape[]
+    private redoStack: Shape[]
+    constructor(canvas: HTMLCanvasElement,interactiveCanvas: HTMLCanvasElement,roomId:number,socket:WebSocket,onZoomChange: (newZoom: number) => void) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d')!;
         this.interactiveCanvas=interactiveCanvas
@@ -111,6 +116,9 @@ export class Game {
         this.zoomlevel=1;
         this.offsetX=0;
         this.offsetY=0;
+        this.undoStack = [];
+        this.redoStack = [];
+        this.onZoomChange=onZoomChange;
         this.init();
         this.initHandlers()
         this.initMouseHandlers()
@@ -149,6 +157,25 @@ export class Game {
         }
         this.redrawInteractionLayer();
     }
+    setZoom(positive:boolean){
+        const scaleAmount = 0.1;
+        const centerX = this.canvas.width / 2;  
+        const centerY = this.canvas.height / 2;
+        const canvasX = (centerX - this.offsetX) / this.zoomlevel;
+        const canvasY = (centerY - this.offsetY) / this.zoomlevel;
+        if (positive) { 
+            this.zoomlevel = Math.min(this.zoomlevel + scaleAmount, 4);
+        } else { // Zoom out
+            this.zoomlevel = Math.max(this.zoomlevel - scaleAmount, 0.1);
+        }
+        this.offsetX = centerX - canvasX * this.zoomlevel;
+        this.offsetY = centerY - canvasY * this.zoomlevel;
+        
+        this.clearCanvas();
+        this.redrawInteractionLayer();
+
+        this.onZoomChange(this.zoomlevel);
+    }
     async init(){
         const cachedShape = this.loadStateFromLocalStorage();
         if (cachedShape) {
@@ -156,7 +183,7 @@ export class Game {
             this.clearCanvas();
         }
         this.existingShape = await getExistingShapes(this.roomId);
-        console.log(this.existingShape);
+        // console.log(this.existingShape);
         this.saveStateToLocalStorage();
         this.clearCanvas();
     }
@@ -178,11 +205,11 @@ export class Game {
                 case WsMessageType.UPDATE: {
                     const parsedShape = JSON.parse(message.message)
                     const findIndex = this.existingShape.findIndex(s=> s.id==message.id)
-                    console.log(this.existingShape);
+                    // console.log(this.existingShape);
                     if (findIndex!=-1) {
-                        console.log(findIndex);                        
+                        // console.log(findIndex);                        
                         this.existingShape[findIndex] = parsedShape;
-                        console.log(this.existingShape);
+                        // console.log(this.existingShape);
                     }
                     this.clearCanvas();
                     break;
@@ -228,7 +255,7 @@ export class Game {
     }   
     private handleText(e:MouseEvent){
         const { x, y } = this.transformPanScale(e.clientX, e.clientY);
-        console.log("worked");
+        // console.log("worked");
         
         const textarea = document.createElement("textarea")
         this.activeTextarea =textarea;
@@ -418,7 +445,7 @@ export class Game {
             }
         }
         const clickedShapeUUID = this.getShapeUUIDAtPosition(x, y);
-        console.log(clickedShapeUUID);
+        // console.log(clickedShapeUUID);
         
         this.selectedShapeUUID = clickedShapeUUID;
         if (!clickedShapeUUID) {
@@ -554,6 +581,7 @@ export class Game {
         if(!shape) return
         this.existingShape.push(shape)
         this.saveStateToLocalStorage()
+        this.undoStack.push(shape)
         this.clearCanvas();
         this.socket.send(JSON.stringify({
                 type:WsMessageType.DRAW,
@@ -596,7 +624,7 @@ export class Game {
             this.ctx.setTransform(this.zoomlevel, 0, 0, this.zoomlevel, this.offsetX, this.offsetY);
             this.ctx.strokeStyle= 'rgba(255,255,255)'
             const selectedTool:Tool = this.selectedTool!;
-            console.log("selectedTool",selectedTool);
+            // console.log("selectedTool",selectedTool);
             if (!selectedTool) {
                 return
             }
@@ -690,19 +718,22 @@ export class Game {
         e.preventDefault(); // Prevent page scrolling
         if (e.ctrlKey) {
             const scaleAmount = 0.1;
-        const mouseX = e.clientX - this.canvas.getBoundingClientRect().left;
-        const mouseY = e.clientY - this.canvas.getBoundingClientRect().top;
-        const canvasX = (mouseX - this.offsetX) / this.zoomlevel;
-        const canvasY = (mouseY - this.offsetY) / this.zoomlevel;
-        if (e.deltaY < 0) { // Zoom in
-            this.zoomlevel += scaleAmount;
-            if (this.zoomlevel>4) this.zoomlevel = 4; // Prevent excessive zoom out
-        } else { // Zoom out
-            this.zoomlevel -= scaleAmount;
-            if (this.zoomlevel< 0.1) this.zoomlevel = 0.1; // Prevent excessive zoom out
-        }
-        this.offsetX = mouseX - canvasX * this.zoomlevel;
-        this.offsetY = mouseY - canvasY * this.zoomlevel;
+            const mouseX = e.clientX - this.canvas.getBoundingClientRect().left;
+            const mouseY = e.clientY - this.canvas.getBoundingClientRect().top;
+           
+            const canvasX = (mouseX - this.offsetX) / this.zoomlevel;
+            const canvasY = (mouseY - this.offsetY) / this.zoomlevel;
+            if (e.deltaY < 0) { // Zoom in
+                this.zoomlevel += scaleAmount;
+                if (this.zoomlevel>4) this.zoomlevel = 4; // Prevent excessive zoom out
+            } else { // Zoom out
+                this.zoomlevel -= scaleAmount;
+                if (this.zoomlevel< 0.1) this.zoomlevel = 0.1; // Prevent excessive zoom out
+            }
+            this.offsetX = mouseX - canvasX * this.zoomlevel;
+            this.offsetY = mouseY - canvasY * this.zoomlevel;
+
+            this.onZoomChange(this.zoomlevel);
         }else{
             this.offsetX -= e.deltaX
             this.offsetY -= e.deltaY
@@ -726,6 +757,8 @@ export class Game {
             e.preventDefault();
             const indexToRemove = this.existingShape.findIndex(shape => shape.id === this.selectedShapeUUID);
             if (indexToRemove!=-1) {
+                this.undoStack.push(this.existingShape[indexToRemove])
+                
                 this.existingShape.splice(indexToRemove,1);
                 this.socket.send(JSON.stringify({
                     type: WsMessageType.ERASE,
@@ -759,6 +792,7 @@ export class Game {
         return { x, y };
     }
     clearCanvas(){
+        console.log(this.undoStack);
         this.ctx.setTransform(1, 0, 0, 1, 0, 0);
         this.ctx.clearRect(-this.offsetX/this.zoomlevel,-this.offsetY/this.zoomlevel,this.canvas.width/this.zoomlevel,this.canvas.height/this.zoomlevel);
         this.ctx.save();
@@ -1027,7 +1061,6 @@ function drawShape(shape:Shape,ctx:CanvasRenderingContext2D){
         ctx.lineTo(shape.endX,shape.endY); 
         ctx.stroke(); 
     }else if(shape.type=="rhombus"){
-        console.log("s",shape);
         
         ctx.beginPath();
         //plain rhombus
