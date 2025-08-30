@@ -30,6 +30,7 @@
     "eslint": "^9",
     "eslint-config-next": "15.3.4",
     "tailwindcss": "^4",
+    "tailwindcss-text-fill-stroke": "2.0.0-beta.3",
     "typescript": "^5"
   }
 }
