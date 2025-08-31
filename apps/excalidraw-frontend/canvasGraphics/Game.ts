@@ -6,6 +6,7 @@ import { HANDLE_SIZE_PX, SELECTION_PADDING_PX, SELECTION_TOLERENCE_PX, TEXT_ADJU
 import { v4 as uuidv4 } from "uuid";
 import {WsMessageType} from "./constants"
 import { throttle } from 'lodash';
+import { log } from "console";
 type Shape = {
     id: string | null,
     type: "rect",
@@ -59,6 +60,11 @@ type Shape = {
     height:number
 }
 type HandleType = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'top' | 'bottom' | 'left' | 'right';
+
+type stack = {
+    operationType: "CREATE" | "UPDATE" | "DELETE",
+    shape: Shape
+}
 export class Game {
     private canvas:HTMLCanvasElement;
     private ctx:CanvasRenderingContext2D;
@@ -101,8 +107,8 @@ export class Game {
 
     //undo and redo
     private onZoomChange: (newZoom: number) => void;
-    private undoStack: Shape[]
-    private redoStack: Shape[]
+    private undoStack: stack[]
+    private redoStack: stack[]
     constructor(canvas: HTMLCanvasElement,interactiveCanvas: HTMLCanvasElement,roomId:number,socket:WebSocket,onZoomChange: (newZoom: number) => void) {
         this.canvas = canvas;
         this.ctx = canvas.getContext('2d')!;
@@ -205,6 +211,7 @@ export class Game {
                 case WsMessageType.UPDATE: {
                     const parsedShape = JSON.parse(message.message)
                     const findIndex = this.existingShape.findIndex(s=> s.id==message.id)
+                    
                     // console.log(this.existingShape);
                     if (findIndex!=-1) {
                         // console.log(findIndex);                        
@@ -378,6 +385,10 @@ export class Game {
                 width: textarea.offsetWidth
             }
             this.existingShape.push(shape);
+            this.undoStack.push({
+                operationType: "DELETE",
+                shape
+            })
             this.saveStateToLocalStorage()
             this.socket.send(JSON.stringify({
                 type: WsMessageType.DRAW,
@@ -419,41 +430,51 @@ export class Game {
         });
     }
     mousedown = (e:MouseEvent)=>{
-        if (this.selectedTool === 'selection') {
-        const { x, y } = this.transformPanScale(e.clientX, e.clientY);
         
-        if (this.selectedShapeUUID) {
-            const handle = this.getHandleAtPosition(x,y);
-            if (handle) {
-                this.isDraggingShape=false;
-                this.activeHandle=handle
-                const shape = this.existingShape.find(s => s.id === this.selectedShapeUUID)!;
-                this.resizeInitialBounds = getShapeBounds(shape);
-                return;
-            }
-            const selectedShape = this.existingShape.find(s=> s.id==this.selectedShapeUUID)
-            if (selectedShape) {
-                const bound = getShapeBounds(selectedShape);
-                if(x>=bound.x && x<=(bound.x+bound.width) && y>=bound.y && y<=(bound.y+bound.height)){
-                    this.isDraggingShape =true;
-                    this.activeHandle=null;
-                    this.draggingOffsetX = x-bound.x
-                    this.draggingOffsetY= y-bound.y
-                    this.clearCanvas();
+        if (this.selectedTool === 'selection') {
+            const { x, y } = this.transformPanScale(e.clientX, e.clientY);
+            console.log("down");
+            if (this.selectedShapeUUID) {
+                const shape1 = this.existingShape.find(s=>s.id===this.selectedShapeUUID)!
+                console.log(shape1);
+                this.undoStack.push({
+                        operationType: "UPDATE",
+                        shape: { ...shape1 }
+                    })
+                 console.log(this.undoStack);
+                 
+                const handle = this.getHandleAtPosition(x,y);
+                if (handle) {
+                    this.isDraggingShape=false;
+                    this.activeHandle=handle
+                    const shape = this.existingShape.find(s => s.id === this.selectedShapeUUID)!;
+                    
+                    this.resizeInitialBounds = getShapeBounds(shape);
                     return;
                 }
+                const selectedShape = this.existingShape.find(s=> s.id==this.selectedShapeUUID)
+                if (selectedShape) {
+                    const bound = getShapeBounds(selectedShape);
+                    if(x>=bound.x && x<=(bound.x+bound.width) && y>=bound.y && y<=(bound.y+bound.height)){
+                        this.isDraggingShape =true;
+                        this.activeHandle=null;
+                        this.draggingOffsetX = x-bound.x
+                        this.draggingOffsetY= y-bound.y
+                        this.clearCanvas();
+                        return;
+                    }
+                }
             }
+            const clickedShapeUUID = this.getShapeUUIDAtPosition(x, y);
+            // console.log(clickedShapeUUID);
+            
+            this.selectedShapeUUID = clickedShapeUUID;
+            if (!clickedShapeUUID) {
+                this.selectedShapeUUID=null;
+            }
+            this.redrawInteractionLayer();
+            return; 
         }
-        const clickedShapeUUID = this.getShapeUUIDAtPosition(x, y);
-        // console.log(clickedShapeUUID);
-        
-        this.selectedShapeUUID = clickedShapeUUID;
-        if (!clickedShapeUUID) {
-            this.selectedShapeUUID=null;
-        }
-        this.redrawInteractionLayer();
-        return; 
-    }
         this.clicked=true;
         const {x,y} = this.transformPanScale(e.clientX,e.clientY)
         this.startX = x;
@@ -580,8 +601,11 @@ export class Game {
         }
         if(!shape) return
         this.existingShape.push(shape)
+        this.undoStack.push({
+                operationType: "DELETE",
+                shape
+        })
         this.saveStateToLocalStorage()
-        this.undoStack.push(shape)
         this.clearCanvas();
         this.socket.send(JSON.stringify({
                 type:WsMessageType.DRAW,
@@ -746,10 +770,10 @@ export class Game {
     } 
 
     keyDown = (e:KeyboardEvent)=>{
-        if (this.selectedShapeUUID === null) {
-            return;
-        }
         if (e.key=='Delete') {
+            if (this.selectedShapeUUID==null) {
+                return
+            }
             const activeEl = document.activeElement;
             if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA')) {
                 return;
@@ -757,8 +781,10 @@ export class Game {
             e.preventDefault();
             const indexToRemove = this.existingShape.findIndex(shape => shape.id === this.selectedShapeUUID);
             if (indexToRemove!=-1) {
-                this.undoStack.push(this.existingShape[indexToRemove])
-                
+                this.undoStack.push({
+                operationType: "CREATE",
+                shape: this.existingShape[indexToRemove]
+            })
                 this.existingShape.splice(indexToRemove,1);
                 this.socket.send(JSON.stringify({
                     type: WsMessageType.ERASE,
@@ -768,6 +794,67 @@ export class Game {
             }
             this.clearCanvas();
             this.redrawInteractionLayer();
+        }
+        if (e.ctrlKey && e.key == 'z') {
+            console.log("working");
+            console.log(this.undoStack);
+            
+            if (this.undoStack.length==0) {
+                return
+            }
+            const operation = this.undoStack.pop();
+            if (operation) {
+                switch (operation.operationType) {
+                    case "DELETE":
+                        const indexToRemove = this.existingShape.findIndex(shape => shape.id === operation.shape.id);
+                        this.existingShape.splice(indexToRemove,1);
+                        this.saveStateToLocalStorage();
+                        this.clearCanvas();
+                        this.socket.send(JSON.stringify({
+                            type: WsMessageType.ERASE,
+                            id: operation.shape.id,
+                            roomId: this.roomId
+                        }))
+                        break;
+                
+                    case "CREATE":
+                        this.existingShape.push(operation.shape);
+                        this.saveStateToLocalStorage();
+                        this.clearCanvas();
+                        this.socket.send(JSON.stringify({
+                                type:WsMessageType.DRAW,
+                                id: operation.shape.id,
+                                message: JSON.stringify(operation.shape),
+                                roomId: this.roomId
+                        }))
+                        break;
+                    case "UPDATE":
+                        console.log("update");
+                        const findIndex = this.existingShape.findIndex(s=> s.id==operation.shape.id)
+                        console.log(findIndex);
+                        
+                        if (findIndex!=-1) {               
+                            console.log("dsadasdas");
+                            
+                            console.log(this.existingShape[findIndex]);
+                            this.existingShape[findIndex] = {...operation.shape};
+                            console.log(this.existingShape[findIndex]);
+                        }
+                        this.clearCanvas();
+                        this.redrawInteractionLayer();
+                        this.saveStateToLocalStorage();
+                        this.socket.send(JSON.stringify({
+                                type:WsMessageType.UPDATE,
+                                id: operation.shape.id,
+                                message: JSON.stringify(operation.shape),
+                                roomId: this.roomId
+                        }))
+                        break;
+                    
+                    default:
+                        break;
+                }
+            }
         }
     }
 
