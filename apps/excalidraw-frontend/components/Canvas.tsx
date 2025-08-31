@@ -5,6 +5,7 @@ import { Game } from "@/canvasGraphics/Game";
 import { useWindowSize } from "@/customHooks/useWindowSize";
 import { ToolBar } from "./ToolBar";
 import { ZoomBar } from "./ZoomBar";
+import { StackBar } from "./StackBar";
 
 export type Tool = "lock" | "selection" | "pan" | "circle" | "rect" | "pencil" | "rhombus" | "arrow" | "line" | "text";
 export default function Canvas({
@@ -58,6 +59,8 @@ export default function Canvas({
       ></canvas>
       <ToolBar selectedTool={selectedTool} setSelectedTool={setSelectedTool} />
       <ZoomBar value={Math.round(zoomLevel * 100)} setZoom={(positive) => game?.setZoom(positive)}/>
+
+      <StackBar callUndo={()=>{game?.callUndo()!}} callRedo={()=>{game?.callRedo()!}} />
     </div>
   );
 }

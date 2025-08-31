@@ -235,6 +235,137 @@ export class Game {
             this.saveStateToLocalStorage()
         }
     }
+    callUndo(){
+            if (this.undoStack.length==0) {
+                return
+            }
+            const operation = this.undoStack.pop();
+            if (operation) {
+                switch (operation.operationType) {
+                    case "DELETE":
+                        const indexToRemove = this.existingShape.findIndex(shape => shape.id === operation.shape.id);
+                        this.existingShape.splice(indexToRemove,1);
+                        this.saveStateToLocalStorage();
+                        this.clearCanvas();
+                        this.socket.send(JSON.stringify({
+                            type: WsMessageType.ERASE,
+                            id: operation.shape.id,
+                            roomId: this.roomId
+                        }))
+                        this.redoStack.push({
+                            operationType: "CREATE",
+                            shape: operation.shape
+                        })
+                        break;
+                
+                    case "CREATE":
+                        this.existingShape.push(operation.shape);
+                        this.saveStateToLocalStorage();
+                        this.clearCanvas();
+                        this.socket.send(JSON.stringify({
+                                type:WsMessageType.DRAW,
+                                id: operation.shape.id,
+                                message: JSON.stringify(operation.shape),
+                                roomId: this.roomId
+                        }))
+                        this.redoStack.push({
+                            operationType: "DELETE",
+                            shape: operation.shape
+                        })
+                        break;
+                    case "UPDATE":
+                        const findIndex = this.existingShape.findIndex(s=> s.id==operation.shape.id)
+                        const shape = this.existingShape.find(s=> s.id==operation.shape.id)!
+                        this.redoStack.push({
+                            operationType: "UPDATE",
+                            shape: {...shape}
+                        })
+                        if (findIndex!=-1) {
+                            this.existingShape[findIndex] = {...operation.shape};
+                        }
+                        
+                        this.clearCanvas();
+                        this.redrawInteractionLayer();
+                        this.saveStateToLocalStorage();
+                        this.socket.send(JSON.stringify({
+                                type:WsMessageType.UPDATE,
+                                id: operation.shape.id,
+                                message: JSON.stringify(operation.shape),
+                                roomId: this.roomId
+                        }))
+                        break;
+                    
+                    default:
+                        break;
+                }
+            }
+    }
+    callRedo(){
+        if (this.redoStack.length==0) {
+                return
+            }
+            const operation = this.redoStack.pop();
+            if (operation) {
+                switch (operation.operationType) {
+                    case "DELETE":
+                        const indexToRemove = this.existingShape.findIndex(shape => shape.id === operation.shape.id);
+                        this.existingShape.splice(indexToRemove,1);
+                        this.saveStateToLocalStorage();
+                        this.clearCanvas();
+                        this.socket.send(JSON.stringify({
+                            type: WsMessageType.ERASE,
+                            id: operation.shape.id,
+                            roomId: this.roomId
+                        }))
+                        this.undoStack.push({
+                            operationType: "CREATE",
+                            shape: operation.shape
+                        })
+                        break;
+                
+                    case "CREATE":
+                        this.existingShape.push(operation.shape);
+                        this.saveStateToLocalStorage();
+                        this.clearCanvas();
+                        this.socket.send(JSON.stringify({
+                                type:WsMessageType.DRAW,
+                                id: operation.shape.id,
+                                message: JSON.stringify(operation.shape),
+                                roomId: this.roomId
+                        }))
+                        this.undoStack.push({
+                            operationType: "DELETE",
+                            shape: operation.shape
+                        })
+                        break;
+                    case "UPDATE":
+                        const findIndex = this.existingShape.findIndex(s=> s.id==operation.shape.id)
+                        const shape = this.existingShape.find(s=> s.id==operation.shape.id)!
+                        this.undoStack.push({
+                            operationType: "UPDATE",
+                            shape: {...shape}
+                        })
+                        if (findIndex!=-1) {
+                            this.existingShape[findIndex] = {...operation.shape};
+                        }
+                        
+                        this.clearCanvas();
+                        this.redrawInteractionLayer();
+                        this.saveStateToLocalStorage();
+                        this.socket.send(JSON.stringify({
+                                type:WsMessageType.UPDATE,
+                                id: operation.shape.id,
+                                message: JSON.stringify(operation.shape),
+                                roomId: this.roomId
+                        }))
+                        break;
+                    
+                    default:
+                        break;
+                }
+            }
+
+    }
     private getStorageKey(): string {
         return `canvas-room-${this.roomId}`;
     }
@@ -792,135 +923,10 @@ export class Game {
             this.redrawInteractionLayer();
         }
         if (e.ctrlKey && e.key == 'z') {
-            
-            if (this.undoStack.length==0) {
-                return
-            }
-            const operation = this.undoStack.pop();
-            if (operation) {
-                switch (operation.operationType) {
-                    case "DELETE":
-                        const indexToRemove = this.existingShape.findIndex(shape => shape.id === operation.shape.id);
-                        this.existingShape.splice(indexToRemove,1);
-                        this.saveStateToLocalStorage();
-                        this.clearCanvas();
-                        this.socket.send(JSON.stringify({
-                            type: WsMessageType.ERASE,
-                            id: operation.shape.id,
-                            roomId: this.roomId
-                        }))
-                        this.redoStack.push({
-                            operationType: "CREATE",
-                            shape: operation.shape
-                        })
-                        break;
-                
-                    case "CREATE":
-                        this.existingShape.push(operation.shape);
-                        this.saveStateToLocalStorage();
-                        this.clearCanvas();
-                        this.socket.send(JSON.stringify({
-                                type:WsMessageType.DRAW,
-                                id: operation.shape.id,
-                                message: JSON.stringify(operation.shape),
-                                roomId: this.roomId
-                        }))
-                        this.redoStack.push({
-                            operationType: "DELETE",
-                            shape: operation.shape
-                        })
-                        break;
-                    case "UPDATE":
-                        const findIndex = this.existingShape.findIndex(s=> s.id==operation.shape.id)
-                        const shape = this.existingShape.find(s=> s.id==operation.shape.id)!
-                        this.redoStack.push({
-                            operationType: "UPDATE",
-                            shape: {...shape}
-                        })
-                        if (findIndex!=-1) {
-                            this.existingShape[findIndex] = {...operation.shape};
-                        }
-                        
-                        this.clearCanvas();
-                        this.redrawInteractionLayer();
-                        this.saveStateToLocalStorage();
-                        this.socket.send(JSON.stringify({
-                                type:WsMessageType.UPDATE,
-                                id: operation.shape.id,
-                                message: JSON.stringify(operation.shape),
-                                roomId: this.roomId
-                        }))
-                        break;
-                    
-                    default:
-                        break;
-                }
-            }
+           this.callUndo();
         }
         if (e.ctrlKey && e.key == 'y') {
-            if (this.redoStack.length==0) {
-                return
-            }
-            const operation = this.redoStack.pop();
-            if (operation) {
-                switch (operation.operationType) {
-                    case "DELETE":
-                        const indexToRemove = this.existingShape.findIndex(shape => shape.id === operation.shape.id);
-                        this.existingShape.splice(indexToRemove,1);
-                        this.saveStateToLocalStorage();
-                        this.clearCanvas();
-                        this.socket.send(JSON.stringify({
-                            type: WsMessageType.ERASE,
-                            id: operation.shape.id,
-                            roomId: this.roomId
-                        }))
-                        this.undoStack.push({
-                            operationType: "CREATE",
-                            shape: operation.shape
-                        })
-                        break;
-                
-                    case "CREATE":
-                        this.existingShape.push(operation.shape);
-                        this.saveStateToLocalStorage();
-                        this.clearCanvas();
-                        this.socket.send(JSON.stringify({
-                                type:WsMessageType.DRAW,
-                                id: operation.shape.id,
-                                message: JSON.stringify(operation.shape),
-                                roomId: this.roomId
-                        }))
-                        this.undoStack.push({
-                            operationType: "DELETE",
-                            shape: operation.shape
-                        })
-                        break;
-                    case "UPDATE":
-                        const findIndex = this.existingShape.findIndex(s=> s.id==operation.shape.id)
-                        const shape = this.existingShape.find(s=> s.id==operation.shape.id)!
-                        this.undoStack.push({
-                            operationType: "UPDATE",
-                            shape: {...shape}
-                        })
-                        if (findIndex!=-1) {
-                            this.existingShape[findIndex] = {...operation.shape};
-                        }
-                        
-                        this.clearCanvas();
-                        this.redrawInteractionLayer();
-                        this.saveStateToLocalStorage();
-                        this.socket.send(JSON.stringify({
-                                type:WsMessageType.UPDATE,
-                                id: operation.shape.id,
-                                message: JSON.stringify(operation.shape),
-                                roomId: this.roomId
-                        }))
-                        break;
-                    
-                    default:
-                        break;
-                }
-            }
+            this.callRedo()
         }
     }
 
